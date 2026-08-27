@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -11,7 +12,18 @@ class EntrypointSmokeTests(unittest.TestCase):
     def test_real_entrypoint_initializes_state_and_emits_headers(self) -> None:
         root = Path(tempfile.mkdtemp())
         try:
-            entrypoint = Path(__file__).parents[1] / "bin" / "rofi-ssh-plus"
+            source_root = Path(__file__).parents[1]
+            install_root = root / "install"
+            shutil.copytree(
+                source_root / "rofi_ssh_plus",
+                install_root / "rofi_ssh_plus",
+                ignore=shutil.ignore_patterns("__pycache__", "*.py[co]"),
+            )
+            (install_root / "bin").mkdir()
+            entrypoint = shutil.copy2(
+                source_root / "bin" / "rofi-ssh-plus",
+                install_root / "bin" / "rofi-ssh-plus",
+            )
             script_dir = root / "scripts"
             script_dir.mkdir()
             discovered = script_dir / "ssh-plus"
@@ -37,6 +49,8 @@ class EntrypointSmokeTests(unittest.TestCase):
                 state_path = state_home / "rofi-ssh-plus" / "history.json"
                 self.assertTrue(state_path.exists())
                 self.assertEqual(state_path.read_text(encoding="utf-8").count('"version": 1'), 1)
+            self.assertFalse(list(install_root.rglob("__pycache__")))
+            self.assertFalse(list(install_root.rglob("*.py[co]")))
         finally:
             for path in sorted(root.rglob("*"), reverse=True):
                 if path.is_file() or path.is_symlink():
