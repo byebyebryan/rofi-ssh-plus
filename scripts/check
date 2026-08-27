@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+cd "$repo_root"
+
+python3 -m compileall -q rofi_ssh_plus bin tests
+python3 -m unittest discover -s tests -p 'test_*.py' -q
+
+mapfile -d '' -t candidate_files < <(git ls-files --cached --others --exclude-standard -z)
+python3 - "${candidate_files[@]}" <<'PY'
+from pathlib import Path
+import sys
+
+for name in sys.argv[1:]:
+    path = Path(name)
+    if not path.is_file():
+        continue
+    data = path.read_bytes()
+    if data and not data.endswith(b"\n"):
+        raise SystemExit(f"{name}: missing final newline")
+    for line_number, line in enumerate(data.splitlines(), 1):
+        if line.endswith((b" ", b"\t")):
+            raise SystemExit(f"{name}:{line_number}: trailing whitespace")
+PY
+
+test -x bin/rofi-ssh-plus
+test -x scripts/check
+test -f README.md
+test -f docs/DESIGN.md
+test -f rofi_ssh_plus/__init__.py
+test -f tests/test_entrypoint.py
+
+git diff --check
+git diff --cached --check
+
+printf '%s\n' '[ok] Python syntax, unit tests, executable bits, expected files, and diff checks'
