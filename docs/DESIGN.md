@@ -17,7 +17,7 @@ coupling without improving a history of at most 100 records.
 ```text
 Rofi callback
     |
-    +-- render history (ROFI_RETV=0, 3, or 10)
+    +-- render history (ROFI_RETV=0, 3, 10, 11, or 12)
     |
     +-- selected/custom destination
           |
@@ -52,14 +52,29 @@ The executable handles Rofi's script callbacks:
   (`kb-accept-custom`) path and starts a worker before returning no rows.
 - `ROFI_RETV=3`: remove the selected `ROFI_INFO` host and render again.
 - `ROFI_RETV=10`: toggle persisted sort mode and render again.
+- `ROFI_RETV=11`: move to the next persisted sort lens and render again. This
+  is the managed Right binding.
+- `ROFI_RETV=12`: move to the previous persisted sort lens and render again.
+  This is the managed Left binding.
 
 Rows put the raw host before the NUL option separator and also provide it as
-`info`. Their `display` value contains the host, connection count, and compact
-relative age. The initial and every re-rendered output contains
-`use-hot-keys=true`, which is required for Rofi to emit custom-key callback
-10, plus a message identifying the active sort order and the Alt+S toggle.
-Plain Enter activates the highlighted row; Ctrl+Enter is the reliable custom
-input action. No custom input suppression is enabled.
+both `info` and `meta`; selection therefore never depends on visible text.
+Their `display` value contains two physical lines: the host, followed by
+connection count and compact relative age. Frequency detail is count-first;
+recency detail is age-first. The output declares a tab record delimiter so the
+display newline remains inside one row. The delimiter is declared using the
+default newline only on the initial render; callback headers and rows use the
+remembered tab delimiter. The prompt identifies the active lens as
+`SSH › Frequent` or `SSH › Recent`.
+
+The initial and every re-rendered output contains `use-hot-keys=true`, which is
+required for Rofi to emit custom-key callbacks. Plain Enter activates the
+highlighted row; Ctrl+Enter is the reliable custom-input action. The managed
+invocation assigns Right and Left to callbacks 11 and 12, and remaps text
+cursor movement to Ctrl+F/Ctrl+B. Rofi's default Tab and Shift+Tab row
+navigation remains available. Alt+S remains callback 10 as a compatibility
+toggle. Escape and Ctrl+G are explicitly configured as cancellation keys;
+there is no layered navigation or Escape-back behavior.
 
 The state model is independent of protocol rendering, and subprocess argv
 construction is independent of both. This keeps state/ranking, probe

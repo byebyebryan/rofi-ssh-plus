@@ -44,8 +44,9 @@ class EntrypointSmokeTests(unittest.TestCase):
                 )
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn("\x00use-hot-keys\x1ftrue", result.stdout)
-                self.assertIn("\x00prompt\x1fSSH", result.stdout)
-                self.assertIn("\x00message\x1fSorted by frequency", result.stdout)
+                self.assertIn("\x00prompt\x1fSSH › Frequent", result.stdout)
+                self.assertIn("\x00delim\x1f\\t\n", result.stdout)
+                self.assertNotIn("Sorted by", result.stdout)
                 state_path = state_home / "rofi-ssh-plus" / "history.json"
                 self.assertTrue(state_path.exists())
                 self.assertEqual(state_path.read_text(encoding="utf-8").count('"version": 1'), 1)

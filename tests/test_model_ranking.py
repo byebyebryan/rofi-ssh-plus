@@ -39,7 +39,11 @@ class RankingTests(unittest.TestCase):
         self.assertEqual(format_age(3_540_000, now), "1m ago")
         self.assertEqual(format_age(0, now), "never")
         shown = display_record(HostRecord("alpha", 3_540_000, 2), SORT_FREQUENCY, now)
-        self.assertEqual(shown, "alpha  ·  2 connects · 1m ago")
+        self.assertEqual(shown, "alpha\n2 connects · 1m ago")
+
+    def test_display_prioritizes_age_for_recency_lens(self) -> None:
+        shown = display_record(HostRecord("alpha", 3_540_000, 2), SORT_RECENCY, 3_600_000)
+        self.assertEqual(shown, "alpha\n1m ago · 2 connects")
 
 
 if __name__ == "__main__":

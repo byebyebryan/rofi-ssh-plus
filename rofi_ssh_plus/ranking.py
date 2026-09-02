@@ -43,7 +43,13 @@ def connection_label(count: int) -> str:
 
 
 def display_record(record: HostRecord, sort_mode: str, now_ms: int | None = None) -> str:
-    """Render one row while leaving the raw host in Rofi's info field."""
+    """Render one two-line row while leaving identity to Rofi metadata.
+
+    The first line is always the destination.  The second line follows the
+    active lens's priority so the detail that explains the ordering is read
+    first.  The protocol adapter uses a tab row delimiter, allowing this LF
+    to remain a physical display line instead of becoming a new Rofi row.
+    """
 
     age = format_age(record.last_connected, now_ms)
     frequency = connection_label(record.count)
@@ -51,4 +57,4 @@ def display_record(record: HostRecord, sort_mode: str, now_ms: int | None = None
         details = f"{age} · {frequency}"
     else:
         details = f"{frequency} · {age}"
-    return f"{record.host}  ·  {details}"
+    return f"{record.host}\n{details}"

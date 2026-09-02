@@ -30,8 +30,15 @@ A direct invocation is:
 ```sh
 rofi -show ssh-plus \
   -modes "ssh-plus:/absolute/path/to/rofi-ssh-plus/bin/rofi-ssh-plus" \
+  -theme-str 'entry { placeholder: "Filter or type host · ←/→ order · Ctrl+Enter new"; }' \
   -kb-custom-1 Alt+s \
-  -kb-accept-custom Control+Return
+  -kb-move-char-forward Control+f \
+  -kb-move-char-back Control+b \
+  -kb-custom-2 Right \
+  -kb-custom-3 Left \
+  -kb-cancel Escape,Control+g \
+  -kb-accept-custom Control+Return \
+  -eh 2
 ```
 
 Create an absolute symlink to the checkout under the `ssh-plus` name in
@@ -40,31 +47,50 @@ Create an absolute symlink to the checkout under the `ssh-plus` name in
 ```sh
 ln -s /absolute/path/to/rofi-ssh-plus/bin/rofi-ssh-plus \
   ~/.config/rofi/scripts/ssh-plus
-rofi -show ssh-plus -kb-custom-1 Alt+s -kb-accept-custom Control+Return
+rofi -show ssh-plus \
+  -theme-str 'entry { placeholder: "Filter or type host · ←/→ order · Ctrl+Enter new"; }' \
+  -kb-custom-1 Alt+s \
+  -kb-move-char-forward Control+f -kb-move-char-back Control+b \
+  -kb-custom-2 Right -kb-custom-3 Left \
+  -kb-cancel Escape,Control+g \
+  -kb-accept-custom Control+Return \
+  -eh 2
 ```
 
-The picker opens with recorded destinations ordered by frequency. Type a new
-destination and press Ctrl+Enter to launch it; plain Enter selects the
-highlighted row. It is added only after the detached worker confirms that a
-server answered. The terminal opens even when the check fails, so a password
-prompt or a visible SSH error remains possible.
+The picker opens with recorded destinations ordered by frequency and labels the
+active lens as `SSH › Frequent` (or `SSH › Recent`) in the prompt. Right and
+Left switch to the next or previous lens, wrapping and persisting the choice;
+`Alt+s` remains a compatibility alias for switching. Type a new destination and
+press Ctrl+Enter to launch it; plain Enter selects the highlighted row. It is
+added only after the detached worker confirms that a server answered. The
+terminal opens even when the check fails, so a password prompt or a visible SSH
+error remains possible.
 
 ## Keys and actions
 
 | Key/action | Behavior |
 | --- | --- |
-| Up/Down, Ctrl-P/Ctrl-N | Navigate rows using Rofi defaults |
+| Up/Down, Ctrl-P/Ctrl-N, Tab/Shift+Tab | Navigate rows using Rofi defaults |
+| Right | Switch to the next ordering lens (frequency → recency → frequency) |
+| Left | Switch to the previous ordering lens (frequency → recency → frequency) |
 | Enter | Connect to the selected recorded host |
 | Typed input + Ctrl+Enter | Probe and connect to a new destination |
 | Shift+Delete | Remove the selected destination from history |
-| `Alt+s` (`-kb-custom-1 Alt+s`) | Toggle frequency/recency ordering |
-| Escape | Close the picker |
+| `Alt+s` (`-kb-custom-1 Alt+s`) | Compatibility alias for switching ordering |
+| Escape, Ctrl+G | Close the picker |
 
-The selected row keeps its raw destination in Rofi's `info` field while the
-visible row includes count and relative age. Frequency ordering is count
-descending, then last-connected descending. Recency ordering is
-last-connected descending, then count descending. A hostname is compared
-case-insensitively and stored in its canonical lower-case form.
+The selected row keeps its raw destination in Rofi's `info` and `meta` fields;
+visible decoration never drives selection. Each row reserves two physical
+lines: the destination is primary and the secondary line contains connection
+count and relative age. The detail order follows the active lens: frequency
+first in `Frequent`, age first in `Recent`. The invocation remaps text-cursor
+movement to Ctrl+F/Ctrl+B so the arrow keys can switch lenses. Escape and
+Ctrl+G are explicitly configured as cancellation keys; Tab and Shift+Tab
+retain Rofi's normal row navigation.
+
+Frequency ordering is count descending, then last-connected descending. Recency
+ordering is last-connected descending, then count descending. A hostname is
+compared case-insensitively and stored in its canonical lower-case form.
 
 ## State and migration
 

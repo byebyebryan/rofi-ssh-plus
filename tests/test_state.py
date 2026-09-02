@@ -76,6 +76,26 @@ class StateStoreTests(unittest.TestCase):
         removed, _ = store.remove("not-there")
         self.assertFalse(removed)
 
+    def test_record_success_does_not_regress_last_connected(self) -> None:
+        store = StateStore(self.path, self.legacy)
+        store.record_success("Alpha", now_ms=200)
+        state = store.record_success("Alpha", now_ms=100)
+        self.assertEqual(state.hosts[0].last_connected, 200)
+        self.assertEqual(state.hosts[0].count, 2)
+
+    def test_directional_sort_cycle_wraps_and_persists(self) -> None:
+        store = StateStore(self.path, self.legacy)
+        self.assertEqual(SORT_RECENCY, store.cycle_sort_mode(1).sort_mode)
+        self.assertEqual(SORT_FREQUENCY, store.cycle_sort_mode(1).sort_mode)
+        self.assertEqual(SORT_RECENCY, store.cycle_sort_mode(-1).sort_mode)
+        self.assertEqual(SORT_FREQUENCY, store.cycle_sort_mode(-1).sort_mode)
+        self.assertEqual(SORT_FREQUENCY, store.load().sort_mode)
+
+        for direction in (0, 2, -2):
+            with self.subTest(direction=direction):
+                with self.assertRaises(ValueError):
+                    store.cycle_sort_mode(direction)
+
     def test_concurrent_record_mutations_do_not_lose_updates(self) -> None:
         store = StateStore(self.path, self.legacy)
 

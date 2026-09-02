@@ -80,7 +80,11 @@ class StateStore:
             records = list(state.hosts)
             for index, record in enumerate(records):
                 if record.host.casefold() == canonical:
-                    records[index] = HostRecord(canonical, timestamp, record.count + 1)
+                    records[index] = HostRecord(
+                        canonical,
+                        max(record.last_connected, timestamp),
+                        record.count + 1,
+                    )
                     break
             else:
                 records.append(HostRecord(canonical, timestamp, 1))
@@ -110,9 +114,25 @@ class StateStore:
             return result
 
     def toggle_sort_mode(self) -> HistoryState:
+        """Toggle between the two persisted sort lenses."""
+
+        return self.cycle_sort_mode(1)
+
+    def cycle_sort_mode(self, direction: int) -> HistoryState:
+        """Move to the neighboring sort lens and persist it atomically.
+
+        ``direction`` is deliberately limited to one step in either
+        direction.  The mode tuple is the source of truth for the cycle, so
+        adding another supported lens later will retain normal wrap-around
+        semantics without changing the on-disk schema.
+        """
+
+        if direction not in (-1, 1):
+            raise ValueError("sort mode direction must be -1 or 1")
         with self._locked():
             state = self._load_and_initialize_unlocked()
-            next_mode = "recency" if state.sort_mode == SORT_FREQUENCY else SORT_FREQUENCY
+            index = SORT_MODES.index(state.sort_mode)
+            next_mode = SORT_MODES[(index + direction) % len(SORT_MODES)]
             result = HistoryState(state.hosts, next_mode)
             self._write_unlocked(result)
             return result

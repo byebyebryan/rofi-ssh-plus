@@ -7,8 +7,11 @@ import unittest
 from pathlib import Path
 
 from rofi_ssh_plus.cli import main
-from rofi_ssh_plus.model import HostRecord, SORT_RECENCY
-from rofi_ssh_plus.protocol import Picker
+from rofi_ssh_plus.model import HostRecord, SORT_FREQUENCY, SORT_RECENCY
+from rofi_ssh_plus.protocol import (
+    ROFI_DELIMITER_VALUE,
+    Picker,
+)
 from rofi_ssh_plus.state import StateStore
 
 
@@ -26,15 +29,19 @@ class ProtocolTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.tempdir.cleanup()
 
-    def test_render_has_hot_key_header_raw_info_and_metadata(self) -> None:
+    def test_render_has_dynamic_prompt_two_line_rows_raw_info_and_metadata(self) -> None:
         output = self.picker.render()
         self.assertIn("\x00use-hot-keys\x1ftrue", output)
-        self.assertIn("\x00message\x1fSorted by frequency", output)
-        self.assertIn("Alt+S toggles order", output)
-        self.assertIn("Ctrl+Enter connects a typed destination", output)
-        self.assertIn("starship  ·  2 connects · just now", output)
+        self.assertIn("\x00prompt\x1fSSH › Frequent", output)
+        self.assertNotIn("\x00message\x1f", output)
+        self.assertIn(f"\x00delim\x1f{ROFI_DELIMITER_VALUE}\n", output)
+        self.assertIn("\x00display\x1fstarship\n2 connects · just now", output)
         self.assertIn("\x00info\x1fstarship", output)
         self.assertIn("\x00meta\x1fstarship", output)
+
+        delimiter = f"\x00delim\x1f{ROFI_DELIMITER_VALUE}\n"
+        _, records = output.split(delimiter, 1)
+        self.assertEqual(2, len(records.removesuffix("\t").split("\t")))
 
     def test_selected_uses_rofi_info_and_custom_uses_argv_then_rofi_input(self) -> None:
         self.assertEqual(self.picker.dispatch(1, ["decorated display"], {"ROFI_INFO": "StarShip"}), "")
@@ -51,17 +58,44 @@ class ProtocolTests(unittest.TestCase):
 
     def test_delete_uses_info_and_renders_remaining_rows(self) -> None:
         output = self.picker.dispatch(3, ["irrelevant"], {"ROFI_INFO": "STARSHIP"})
-        self.assertNotIn("starship  ·", output)
-        self.assertIn("snap  ·", output)
+        self.assertNotIn("starship\n", output)
+        self.assertIn("snap\n", output)
         self.assertEqual([h.host for h in self.store.load().hosts], ["snap"])
 
-    def test_custom_key_toggles_and_persists_sort_mode(self) -> None:
+    def test_right_and_left_cycle_lenses_with_wrap_and_persistence(self) -> None:
+        output = ""
+        for retv, expected_mode, expected_prompt in (
+            (11, SORT_RECENCY, "SSH › Recent"),
+            (11, SORT_FREQUENCY, "SSH › Frequent"),
+            (12, SORT_RECENCY, "SSH › Recent"),
+            (12, SORT_FREQUENCY, "SSH › Frequent"),
+        ):
+            with self.subTest(retv=retv, expected_mode=expected_mode):
+                output = self.picker.dispatch(retv, [], {})
+                self.assertEqual(self.store.load().sort_mode, expected_mode)
+                self.assertIn(f"\x00prompt\x1f{expected_prompt}", output)
+                self.assertNotIn("\x00keep-filter\x1ftrue", output)
+                self.assertNotIn("\x00keep-selection\x1ftrue", output)
+
+        self.assertIn("\x00display\x1fsnap\n1 connect · just now", output)
+        self.assertNotIn("\x00delim\x1f", output)
+        self.assertTrue(output.startswith("\x00use-hot-keys\x1ftrue\t\x00prompt\x1f"))
+
+    def test_alt_s_remains_compatibility_alias_for_switching_lens(self) -> None:
         output = self.picker.dispatch(10, [], {})
         self.assertEqual(self.store.load().sort_mode, SORT_RECENCY)
         self.assertIn("\x00use-hot-keys\x1ftrue", output)
-        self.assertIn("\x00message\x1fSorted by recency", output)
-        self.assertIn("Alt+S toggles order", output)
-        self.assertIn("snap  ·", output)
+        self.assertIn("\x00prompt\x1fSSH › Recent", output)
+        self.assertNotIn("Sorted by", output)
+        self.assertIn("snap\n", output)
+
+    def test_empty_state_keeps_typed_destination_guidance_clear(self) -> None:
+        root = Path(self.tempdir.name) / "empty"
+        picker = Picker(StateStore(root / "history.json", root / "legacy.json"))
+        output = picker.render()
+        self.assertIn("SSH › Frequent", output)
+        self.assertIn("No verified SSH hosts yet", output)
+        self.assertIn("type a host and press Ctrl+Enter", output)
 
     def test_main_initial_and_callback_protocol(self) -> None:
         root = Path(self.tempdir.name)
