@@ -8,6 +8,20 @@ history contains only destinations for which the pre-flight probe established
 that an SSH server answered. The picker never scans `~/.ssh/known_hosts` or
 `~/.ssh/config`; successful use is the source of truth.
 
+The current release owns successful-destination history only. A proposed,
+unimplemented [Host Mesh Contract v1](HOST_MESH_V1.md) extends that ownership
+to logical host IDs, aliases, ordered routes, and route health for
+`rofi-tmux-plus` and `rofi-agent-plus`. The contract deliberately separates
+background route-health observations from explicit user connections so suite
+consumers cannot distort SSH frequency ranking.
+
+The target mesh-aware picker retains the existing Frequent and Recent lenses.
+Configured remote hosts are always visible as one logical row, while unmatched
+successful custom destinations remain ad-hoc. Selecting a managed row chooses
+among its routes; clearing its history never edits declarative configuration.
+The full ranking, connection, deletion, and migration semantics are normative
+in Host Mesh Contract v1.
+
 The first implementation is a Python 3.11+ standard-library package with a
 thin executable entry point. A compiled Rofi plugin would add ABI and build
 coupling without improving a history of at most 100 records.
@@ -147,10 +161,11 @@ The supported optional knobs are `TERMINAL`, positive
 `ROFI_SSH_PLUS_CONNECT_TIMEOUT`, and the single-executable
 `ROFI_SSH_PLUS_SSH_COMMAND`.
 
-## Non-goals
+## Current implementation non-goals
 
 - Enumerating SSH configuration or `known_hosts`.
 - SSH argument passthrough, per-host editing, pinning, or aliases managed by
-  this tool.
+  the current history-only implementation. Declarative logical hosts and
+  aliases are proposed separately in the Host Mesh contract.
 - A native Rofi C plugin or dmenu compatibility wrapper.
 - DMS/chezmoi integration, deployment, release automation, or network tests.

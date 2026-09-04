@@ -4,6 +4,11 @@
 actually answered an SSH reachability check. It does not enumerate
 `known_hosts` or SSH configuration, so the list stays small and useful.
 
+The current release is history-only. A proposed, not-yet-implemented
+[Host Mesh Contract v1](docs/HOST_MESH_V1.md) would make this project the
+logical-host and route authority shared by `rofi-tmux-plus` and
+`rofi-agent-plus` without exposing its private state files.
+
 ## Requirements
 
 - Python 3.11 or newer
