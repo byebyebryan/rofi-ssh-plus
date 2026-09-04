@@ -20,9 +20,9 @@ class ProtocolTests(unittest.TestCase):
         self.tempdir = tempfile.TemporaryDirectory()
         root = Path(self.tempdir.name)
         self.store = StateStore(root / "history.json", root / "legacy.json")
-        self.store.record_success("starship", now_ms=1_000)
-        self.store.record_success("starship", now_ms=2_000)
-        self.store.record_success("snap", now_ms=3_000)
+        self.store.record_success("alpha", now_ms=1_000)
+        self.store.record_success("alpha", now_ms=2_000)
+        self.store.record_success("beta", now_ms=3_000)
         self.launched: list[str] = []
         self.picker = Picker(self.store, worker_launcher=lambda host: self.launched.append(host) or True, now_ms=4_000)
 
@@ -35,21 +35,21 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn("\x00prompt\x1fSSH › Frequent", output)
         self.assertNotIn("\x00message\x1f", output)
         self.assertIn(f"\x00delim\x1f{ROFI_DELIMITER_VALUE}\n", output)
-        self.assertIn("\x00display\x1fstarship\n2 connects · just now", output)
-        self.assertIn("\x00info\x1fstarship", output)
-        self.assertIn("\x00meta\x1fstarship", output)
+        self.assertIn("\x00display\x1falpha\n2 connects · just now", output)
+        self.assertIn("\x00info\x1falpha", output)
+        self.assertIn("\x00meta\x1falpha", output)
 
         delimiter = f"\x00delim\x1f{ROFI_DELIMITER_VALUE}\n"
         _, records = output.split(delimiter, 1)
         self.assertEqual(2, len(records.removesuffix("\t").split("\t")))
 
     def test_selected_uses_rofi_info_and_custom_uses_argv_then_rofi_input(self) -> None:
-        self.assertEqual(self.picker.dispatch(1, ["decorated display"], {"ROFI_INFO": "StarShip"}), "")
-        self.assertEqual(self.launched, ["starship"])
+        self.assertEqual(self.picker.dispatch(1, ["decorated display"], {"ROFI_INFO": "Alpha"}), "")
+        self.assertEqual(self.launched, ["alpha"])
         self.assertEqual(self.picker.dispatch(2, ["NewHost"], {}), "")
-        self.assertEqual(self.launched, ["starship", "newhost"])
+        self.assertEqual(self.launched, ["alpha", "newhost"])
         self.assertEqual(self.picker.dispatch(2, [], {"ROFI_INPUT": "InputHost"}), "")
-        self.assertEqual(self.launched, ["starship", "newhost", "inputhost"])
+        self.assertEqual(self.launched, ["alpha", "newhost", "inputhost"])
 
     def test_invalid_custom_input_is_not_launched(self) -> None:
         for value in ("", "host name", "-oBad"):
@@ -57,10 +57,10 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(self.launched, [])
 
     def test_delete_uses_info_and_renders_remaining_rows(self) -> None:
-        output = self.picker.dispatch(3, ["irrelevant"], {"ROFI_INFO": "STARSHIP"})
-        self.assertNotIn("starship\n", output)
-        self.assertIn("snap\n", output)
-        self.assertEqual([h.host for h in self.store.load().hosts], ["snap"])
+        output = self.picker.dispatch(3, ["irrelevant"], {"ROFI_INFO": "ALPHA"})
+        self.assertNotIn("alpha\n", output)
+        self.assertIn("beta\n", output)
+        self.assertEqual([h.host for h in self.store.load().hosts], ["beta"])
 
     def test_right_and_left_cycle_lenses_with_wrap_and_persistence(self) -> None:
         output = ""
@@ -77,7 +77,7 @@ class ProtocolTests(unittest.TestCase):
                 self.assertNotIn("\x00keep-filter\x1ftrue", output)
                 self.assertNotIn("\x00keep-selection\x1ftrue", output)
 
-        self.assertIn("\x00display\x1fsnap\n1 connect · just now", output)
+        self.assertIn("\x00display\x1fbeta\n1 connect · just now", output)
         self.assertNotIn("\x00delim\x1f", output)
         self.assertTrue(output.startswith("\x00use-hot-keys\x1ftrue\t\x00prompt\x1f"))
 
@@ -87,7 +87,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn("\x00use-hot-keys\x1ftrue", output)
         self.assertIn("\x00prompt\x1fSSH › Recent", output)
         self.assertNotIn("Sorted by", output)
-        self.assertIn("snap\n", output)
+        self.assertIn("beta\n", output)
 
     def test_empty_state_keeps_typed_destination_guidance_clear(self) -> None:
         root = Path(self.tempdir.name) / "empty"

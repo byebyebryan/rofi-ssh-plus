@@ -29,9 +29,9 @@ class StateStoreTests(unittest.TestCase):
         self.write_legacy(
             {
                 "hosts": [
-                    {"host": "StarShip", "lastConnected": 100, "count": 2},
-                    {"host": "starship", "lastConnected": 300, "count": 4},
-                    {"host": "SNAP", "lastConnected": "bad", "count": 3},
+                    {"host": "Alpha", "lastConnected": 100, "count": 2},
+                    {"host": "alpha", "lastConnected": 300, "count": 4},
+                    {"host": "BETA", "lastConnected": "bad", "count": 3},
                     {"host": "bad host", "lastConnected": 500, "count": 9},
                     {"host": "missing-fields"},
                     None,
@@ -43,7 +43,7 @@ class StateStoreTests(unittest.TestCase):
         self.assertEqual(state.sort_mode, SORT_FREQUENCY)
         self.assertEqual(
             [(h.host, h.last_connected, h.count) for h in state.hosts],
-            [("starship", 300, 6), ("snap", 0, 3), ("missing-fields", 0, 1)],
+            [("alpha", 300, 6), ("beta", 0, 3), ("missing-fields", 0, 1)],
         )
         self.assertTrue(self.path.exists())
         self.assertTrue(self.legacy.exists())
