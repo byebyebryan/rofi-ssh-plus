@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from .model import HostRecord, SORT_FREQUENCY, SORT_MODES, SORT_RECENCY
+from .model import SORT_FREQUENCY, SORT_MODES, SORT_RECENCY, HostRecord
 
 
 def sort_hosts(hosts: list[HostRecord] | tuple[HostRecord, ...], sort_mode: str) -> list[HostRecord]:

@@ -1,6 +1,7 @@
 # Host Mesh Contract v1
 
-Status: proposed; no released `rofi-ssh-plus` version implements this contract.
+Status: implemented in the current source; no tagged release has published
+this contract yet.
 
 This contract makes `rofi-ssh-plus` the host and route authority for the Rofi
 SSH, tmux, and agent pickers. It is a local process contract, not a network
@@ -35,7 +36,7 @@ remote-command executor.
 
 ## Configuration
 
-The planned configuration file is
+The canonical configuration file is
 `${XDG_CONFIG_HOME:-~/.config}/rofi-ssh-plus/config.toml`. A representative
 configuration is:
 
@@ -176,8 +177,8 @@ rofi-ssh-plus mesh report-route --json \
 `status` is `reachable` or `unreachable`. The host and route must exist in the
 current mesh. `source` is a bounded diagnostic label; it does not affect SSH
 history ranking. `meshRevision` must equal the current revision, preventing a
-late observation from a replaced route definition. `observedAt` is the local
-Unix-millisecond time at which the SSH attempt completed. Success returns:
+late observation from a replaced route definition. Required `observedAt` is the
+local Unix-millisecond time at which the SSH attempt completed. Success returns:
 
 ```json
 {"schemaVersion":1,"ok":true,"accepted":true}
@@ -335,14 +336,12 @@ fakes. They do not import SSH Plus internals or read its private state.
 
 ## Adoption sequence
 
-1. Add configuration parsing and these two JSON commands to SSH Plus.
-2. Split route-health events from explicit user usage in private state.
-3. Teach the SSH picker to collapse managed routes and aliases to one logical
-   host while retaining ad-hoc successful destinations.
-4. Publish deterministic list, accepted/stale report, and error-envelope
-   fixtures as contract tests.
-5. Move Agent Plus host configuration to this contract with a compatibility
-   window for `rofi-agent-picker`'s existing `hosts`, `host_routes`, and
-   `aliases` keys.
-6. Make Tmux Plus remote discovery consume this contract from its first
-   implementation.
+1. The current source provides strict configuration parsing and the two JSON
+   commands above.
+2. Route-health events are persisted separately from explicit user usage.
+3. The SSH picker collapses managed routes and aliases to one logical host
+   while retaining ad-hoc successful destinations.
+4. Deterministic producer fixtures cover the list, report, marker, migration,
+   and error-envelope cases.
+5. Agent Plus and Tmux Plus consume this contract in their respective
+   integration checkpoints; they do not import SSH Plus internals.

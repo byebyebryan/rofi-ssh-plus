@@ -7,10 +7,9 @@ worker process.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import unicodedata
+from dataclasses import dataclass
 from typing import Any
-
 
 SORT_FREQUENCY = "frequency"
 SORT_RECENCY = "recency"
@@ -32,6 +31,12 @@ def normalize_destination(value: str) -> str:
     valid because they contain no shell syntax or additional argv tokens.
     """
 
+    return validate_destination(value).casefold()
+
+
+def validate_destination(value: str) -> str:
+    """Validate one destination while preserving its configured spelling."""
+
     if not isinstance(value, str):
         raise InvalidDestination("destination must be text")
     if not value or value.strip() != value:
@@ -43,7 +48,7 @@ def normalize_destination(value: str) -> str:
         for char in value
     ):
         raise InvalidDestination("destination must not contain whitespace or control characters")
-    return value.casefold()
+    return value
 
 
 @dataclass(frozen=True)
@@ -55,7 +60,7 @@ class HostRecord:
     count: int
 
     @property
-    def lastConnected(self) -> int:  # noqa: N802 - legacy state spelling
+    def lastConnected(self) -> int:
         """Compatibility spelling used by the DMS state schema."""
 
         return self.last_connected
@@ -76,7 +81,7 @@ class HistoryState:
     sort_mode: str = SORT_FREQUENCY
 
     @property
-    def sortMode(self) -> str:  # noqa: N802 - useful schema-compatible alias
+    def sortMode(self) -> str:
         return self.sort_mode
 
     def to_dict(self) -> dict[str, Any]:

@@ -1,0 +1,13 @@
+{
+  "legacy": {
+    "hosts": [
+      {"host": "beta-vpn.test", "lastConnected": 100, "count": 2},
+      {"host": "BETA-LAN.TEST", "lastConnected": 300, "count": 3},
+      {"host": "unmanaged.test", "lastConnected": 200, "count": 1}
+    ]
+  },
+  "expected": [
+    {"host": "beta", "lastConnected": 300, "count": 5},
+    {"host": "unmanaged.test", "lastConnected": 200, "count": 1}
+  ]
+}

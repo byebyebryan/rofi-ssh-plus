@@ -24,6 +24,42 @@ for name in sys.argv[1:]:
             raise SystemExit(f"{name}:{line_number}: trailing whitespace")
 PY
 
+python3 - <<'PY'
+import json
+from pathlib import Path
+
+fixture_root = Path("contracts/host-mesh-v1/fixtures")
+required = (
+    "config-local-only.toml",
+    "config-multi-route.toml",
+    "config-invalid-duplicate.toml",
+    "config-invalid-ambiguous.toml",
+    "route-reports.json",
+    "route-order.json",
+    "reached-markers.json",
+    "history-migration.json",
+    "envelopes.json",
+)
+for name in required:
+    path = fixture_root / name
+    if not path.is_file():
+        raise SystemExit(f"missing conformance fixture: {path}")
+    if path.suffix == ".json":
+        json.loads(path.read_text(encoding="utf-8"))
+envelopes = json.loads((fixture_root / "envelopes.json").read_text(encoding="utf-8"))
+expected_errors = {
+    "invalid_input",
+    "invalid_config",
+    "unsupported_schema",
+    "unknown_host",
+    "unknown_route",
+    "stale_mesh",
+    "persistence_failed",
+}
+if set(envelopes.get("errors", {})) != expected_errors:
+    raise SystemExit("error-envelope fixture does not cover every stable code")
+PY
+
 test -x bin/rofi-ssh-plus
 test -x scripts/check
 test -f README.md

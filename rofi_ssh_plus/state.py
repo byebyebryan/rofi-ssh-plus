@@ -6,25 +6,25 @@ import json
 import os
 import tempfile
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator
 
 try:
     import fcntl
 except ImportError:  # pragma: no cover - this application targets Linux
     fcntl = None  # type: ignore[assignment]
 
+from .mesh import MeshConfig
 from .model import (
-    HostRecord,
-    HistoryState,
-    InvalidDestination,
     SORT_FREQUENCY,
     SORT_MODES,
+    HistoryState,
+    HostRecord,
+    InvalidDestination,
     normalize_destination,
 )
 from .ranking import sort_hosts
-
 
 SCHEMA_VERSION = 1
 DEFAULT_MAX_HOSTS = 100
@@ -46,20 +46,33 @@ class StateStore:
         legacy_path: str | os.PathLike[str] | None = None,
         *,
         max_hosts: int = DEFAULT_MAX_HOSTS,
+        mesh: MeshConfig | None = None,
     ) -> None:
         self.path = Path(path).expanduser()
         if legacy_path is None:
-            legacy_path = self.path.parent / "DankMaterialShell" / "plugins" / "sshPlus_state.json"
+            legacy_path = (
+                self.path.parent
+                / "DankMaterialShell"
+                / "plugins"
+                / "sshPlus_state.json"
+            )
         self.legacy_path = Path(legacy_path).expanduser()
         self.max_hosts = max(1, int(max_hosts))
+        self.mesh = mesh
 
     @classmethod
-    def from_environment(cls, environ: dict[str, str] | None = None) -> "StateStore":
+    def from_environment(
+        cls,
+        environ: dict[str, str] | None = None,
+        *,
+        mesh: MeshConfig | None = None,
+    ) -> StateStore:
         env = os.environ if environ is None else environ
         state_home = Path(env.get("XDG_STATE_HOME") or "~/.local/state").expanduser()
         return cls(
             state_home / "rofi-ssh-plus" / "history.json",
             state_home / "DankMaterialShell" / "plugins" / "sshPlus_state.json",
+            mesh=mesh,
         )
 
     @property
@@ -70,8 +83,14 @@ class StateStore:
         with self._locked():
             return self._load_and_initialize_unlocked()
 
-    def record_success(self, host: str, now_ms: int | None = None) -> HistoryState:
-        canonical = normalize_destination(host)
+    def record_success(
+        self,
+        host: str,
+        now_ms: int | None = None,
+        *,
+        usage_host: str | None = None,
+    ) -> HistoryState:
+        canonical = self._history_key(usage_host if usage_host is not None else host)
         timestamp = int(now_ms if now_ms is not None else time.time() * 1000)
         if timestamp < 0:
             raise ValueError("timestamp must not be negative")
@@ -94,10 +113,12 @@ class StateStore:
             return result
 
     def remove(self, host: str) -> tuple[bool, HistoryState]:
-        canonical = normalize_destination(host)
+        canonical = self._history_key(host)
         with self._locked():
             state = self._load_and_initialize_unlocked()
-            records = [record for record in state.hosts if record.host.casefold() != canonical]
+            records = [
+                record for record in state.hosts if record.host.casefold() != canonical
+            ]
             removed = len(records) != len(state.hosts)
             result = HistoryState(tuple(records), state.sort_mode)
             if removed:
@@ -175,7 +196,20 @@ class StateStore:
                 payload = json.load(stream)
         except (OSError, ValueError, TypeError):
             return HistoryState(())
-        return self._state_from_payload(payload)
+        state = self._state_from_payload(payload)
+        # A pre-mesh generic history can contain route destinations from the
+        # old picker.  Persist the folded logical-host representation once it
+        # is first observed with a mesh, so subsequent consumers see one
+        # durable identity and do not repeat the migration work.
+        if self.mesh is not None and isinstance(payload, dict):
+            normalized = state.to_dict()
+            if (
+                payload.get("version") != normalized["version"]
+                or payload.get("sortMode") != normalized["sortMode"]
+                or payload.get("hosts") != normalized["hosts"]
+            ):
+                self._write_unlocked(state)
+        return state
 
     def _read_legacy(self) -> HistoryState:
         try:
@@ -185,7 +219,9 @@ class StateStore:
             return HistoryState(())
         return self._state_from_payload(payload, legacy=True)
 
-    def _state_from_payload(self, payload: object, *, legacy: bool = False) -> HistoryState:
+    def _state_from_payload(
+        self, payload: object, *, legacy: bool = False
+    ) -> HistoryState:
         if not isinstance(payload, dict):
             return HistoryState(())
         if not legacy and payload.get("version", SCHEMA_VERSION) != SCHEMA_VERSION:
@@ -202,7 +238,7 @@ class StateStore:
                 continue
             raw_host = raw.get("host")
             try:
-                host = normalize_destination(raw_host)
+                host = self._history_key(raw_host)
             except (InvalidDestination, TypeError):
                 continue
             count = self._positive_int(raw.get("count"), default=1)
@@ -219,10 +255,24 @@ class StateStore:
                     max(existing.last_connected, record.last_connected),
                     existing.count + record.count,
                 )
-        result = HistoryState(tuple(self._trim(list(records.values()), sort_mode)), sort_mode)
+        result = HistoryState(
+            tuple(self._trim(list(records.values()), sort_mode)), sort_mode
+        )
         if legacy:
             return HistoryState(result.hosts, SORT_FREQUENCY)
         return result
+
+    def _history_key(self, host: object) -> str:
+        canonical = normalize_destination(host)  # type: ignore[arg-type]
+        if self.mesh is None:
+            return canonical
+        resolved = self.mesh.resolve_token(canonical)
+        # The local descriptor is never an SSH destination.  Keep a historical
+        # local-looking value ad-hoc rather than rendering it as a selectable
+        # mesh host.
+        if resolved is not None and not resolved.local:
+            return resolved.id
+        return canonical
 
     @staticmethod
     def _positive_int(value: object, *, default: int) -> int:
@@ -251,7 +301,9 @@ class StateStore:
                 os.fsync(stream.fileno())
             os.replace(temporary_path, self.path)
             try:
-                directory_fd = os.open(self.path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+                directory_fd = os.open(
+                    self.path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+                )
                 try:
                     os.fsync(directory_fd)
                 finally:

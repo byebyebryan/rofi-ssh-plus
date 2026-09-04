@@ -2,12 +2,13 @@
 
 `rofi-ssh-plus` is a Rofi script-mode picker for SSH destinations that have
 actually answered an SSH reachability check. It does not enumerate
-`known_hosts` or SSH configuration, so the list stays small and useful.
+`known_hosts` or SSH configuration, so the list stays small and useful. It also
+provides the Host Mesh Contract v1 process boundary for logical hosts, route
+candidates, and route health shared by the other suite pickers.
 
-The current release is history-only. A proposed, not-yet-implemented
-[Host Mesh Contract v1](docs/HOST_MESH_V1.md) would make this project the
-logical-host and route authority shared by `rofi-tmux-plus` and
-`rofi-agent-plus` without exposing its private state files.
+The current source implements the contract, although a tagged release has not
+yet published it. Consumers invoke `rofi-ssh-plus mesh ... --json` through
+`PATH`; they do not import this package or read its private state.
 
 ## Requirements
 
@@ -62,14 +63,16 @@ rofi -show ssh-plus \
   -eh 2
 ```
 
-The picker opens with recorded destinations ordered by frequency and labels the
-active lens as `SSH › Frequent` (or `SSH › Recent`) in the prompt. Right and
-Left switch to the next or previous lens, wrapping and persisting the choice;
-`Alt+s` remains a compatibility alias for switching. Type a new destination and
-press Ctrl+Enter to launch it; plain Enter selects the highlighted row. It is
-added only after the detached worker confirms that a server answered. The
-terminal opens even when the check fails, so a password prompt or a visible SSH
-error remains possible.
+The picker opens with configured logical hosts and recorded ad-hoc destinations
+ordered by frequency and labels the active lens as `SSH › Frequent` (or
+`SSH › Recent`) in the prompt. Right and Left switch to the next or previous
+lens, wrapping and persisting the choice; `Alt+s` remains a compatibility alias
+for switching. Type a new destination and press Ctrl+Enter to launch it; plain
+Enter selects the highlighted row. An ad-hoc destination is added only after
+the detached worker confirms that a server answered. A managed row tries its
+ordered routes and records one logical-host usage after a route answers. The
+terminal opens even when checks fail, so a password prompt or visible SSH error
+remains possible.
 
 ## Keys and actions
 
@@ -106,9 +109,23 @@ ${XDG_STATE_HOME:-~/.local/state}/rofi-ssh-plus/history.json
 ```
 
 It is a versioned JSON object containing `version`, `sortMode`, and `hosts`.
-Each host has `host`, millisecond `lastConnected`, and positive `count`.
+Each usage record has `host`, millisecond `lastConnected`, and positive `count`;
+configured managed hosts with no usage record are rendered with zero count and
+unknown age.
 The parent directory is private (`0700`), the state and lock files are private
 (`0600`), updates use an advisory lock and an atomic same-directory replace.
+
+The optional strict Host Mesh configuration is:
+
+```text
+${XDG_CONFIG_HOME:-~/.config}/rofi-ssh-plus/config.toml
+```
+
+When present, it defines the local identity, configured logical hosts, ordered
+routes, aliases, and SSH policy. A missing file safely synthesizes a local-only
+mesh from the system hostname. Route health is kept separately at
+`${XDG_STATE_HOME:-~/.local/state}/rofi-ssh-plus/route-health.json`; it never
+changes usage counts or recency.
 
 On the first read only, if the generic file does not exist, valid records are
 imported from:
@@ -138,6 +155,11 @@ Plus behavior for password and host-key cases. DNS failures, refusal, route
 failures, and timeouts are not recorded. The terminal is launched regardless
 as an argv array (`$TERMINAL -e ssh <host>` or `ghostty -e ssh <host>`).
 
+Contract consumers use the reached-host marker wrapper from
+[Host Mesh Contract v1](docs/HOST_MESH_V1.md) for domain commands. A marker
+proves that SSH authenticated and started the remote wrapper; a later domain
+failure is not treated as a route failure.
+
 Optional environment configuration is intentionally narrow:
 
 - `TERMINAL` selects the terminal command prefix (parsed with `shlex.split`).
@@ -157,7 +179,8 @@ exit immediately and the terminal does not depend on the worker's lifetime.
 - Input must be one nonempty token with no whitespace or control characters
   and must not begin with `-`; this blocks accidental SSH option injection.
 - SSH argument passthrough, host editing/pinning, and config/known-hosts
-  discovery are intentionally out of scope.
+  discovery remain intentionally out of scope. Declarative logical hosts and
+  routes are supplied only by the Host Mesh configuration file.
 - A successful reachability probe is not proof that authentication will
   complete in the interactive terminal. It only proves that the destination
   answered in a way consistent with a real SSH server.

@@ -8,12 +8,12 @@ history contains only destinations for which the pre-flight probe established
 that an SSH server answered. The picker never scans `~/.ssh/known_hosts` or
 `~/.ssh/config`; successful use is the source of truth.
 
-The current release owns successful-destination history only. A proposed,
-unimplemented [Host Mesh Contract v1](HOST_MESH_V1.md) extends that ownership
-to logical host IDs, aliases, ordered routes, and route health for
-`rofi-tmux-plus` and `rofi-agent-plus`. The contract deliberately separates
-background route-health observations from explicit user connections so suite
-consumers cannot distort SSH frequency ranking.
+The current source owns successful-destination history and implements the
+[Host Mesh Contract v1](HOST_MESH_V1.md), extending that ownership to logical
+host IDs, aliases, ordered routes, and route health for `rofi-tmux-plus` and
+`rofi-agent-plus`. The contract deliberately separates background route-health
+observations from explicit user connections so suite consumers cannot distort
+SSH frequency ranking.
 
 The target mesh-aware picker retains the existing Frequent and Recent lenses.
 Configured remote hosts are always visible as one logical row, while unmatched
@@ -37,7 +37,7 @@ Rofi callback
           |
           +-- detached Python worker
                  |
-                 +-- BatchMode SSH probe
+                 +-- bounded explicit-user SSH probe (or consumer marker command)
                  +-- record success, if reached
                  +-- detached terminal: <terminal> -e ssh <host>
 ```
@@ -53,6 +53,12 @@ The terminal is deliberately started even if the probe fails. This preserves
 the interactive SSH experience: a user may still want to inspect a password,
 host-key, or other SSH message. A failed probe only suppresses the history
 write.
+
+The SSH picker uses the existing explicit-user probe and its
+`classify_probe` semantics, including recognized authentication and host-key
+responses. Consumers that run a remote domain command use the separate
+reached-host marker protocol; a nonzero domain exit after a valid marker is
+not treated as a route failure.
 
 ## Rofi protocol
 
@@ -142,7 +148,8 @@ key verification`, `remote host identification has changed`, or `userauth`.
 This intentionally records password-auth and host-key cases after a real
 server answers, while not recording DNS resolution, connection refusal,
 network timeout, or missing-binary failures. A hard subprocess timeout is an
-additional guard around SSH's own `ConnectTimeout`.
+additional guard around SSH's own `ConnectTimeout` and scales with the
+configured `ConnectionAttempts` bound.
 
 ## Input and security
 
@@ -164,8 +171,7 @@ The supported optional knobs are `TERMINAL`, positive
 ## Current implementation non-goals
 
 - Enumerating SSH configuration or `known_hosts`.
-- SSH argument passthrough, per-host editing, pinning, or aliases managed by
-  the current history-only implementation. Declarative logical hosts and
-  aliases are proposed separately in the Host Mesh contract.
+- SSH argument passthrough, per-host editing, or pinning. Declarative logical
+  hosts, aliases, and routes are managed only through the Host Mesh contract.
 - A native Rofi C plugin or dmenu compatibility wrapper.
 - DMS/chezmoi integration, deployment, release automation, or network tests.
