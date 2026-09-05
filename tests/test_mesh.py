@@ -295,6 +295,68 @@ class MeshCliTests(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertEqual(duplicate["accepted"], False)
 
+    def test_mesh_dispatch_keeps_inherited_cli_and_literal_row_callbacks_distinct(self) -> None:
+        inherited = {
+            **self.environment,
+            "ROFI_RETV": "1",
+            "ROFI_INFO": "mesh",
+            "ROFI_DATA": "idle",
+        }
+        output = io.StringIO()
+        with patch("rofi_ssh_plus.cli.spawn_worker", return_value=True) as spawn:
+            result = main(["mesh"], environ=inherited, stdout=output)
+        self.assertEqual(result, 0)
+        self.assertEqual("", output.getvalue())
+        spawn.assert_called_once()
+
+        output = io.StringIO()
+        result = main(
+            ["mesh", "list", "--json"],
+            environ=inherited,
+            stdout=output,
+        )
+        self.assertEqual(result, 0)
+        listing = json.loads(output.getvalue())
+        self.assertEqual(listing["schemaVersion"], 1)
+        self.assertEqual(listing["localHostId"], "alpha")
+
+        revision = listing["meshRevision"]
+        output = io.StringIO()
+        result = main(
+            [
+                "mesh",
+                "report-route",
+                "--json",
+                "--host",
+                "beta",
+                "--route",
+                "beta-vpn.test",
+                "--status",
+                "reachable",
+                "--source",
+                "fixture",
+                "--mesh-revision",
+                str(revision),
+                "--observed-at",
+                str(current_time_ms() - 100),
+            ],
+            environ=inherited,
+            stdout=output,
+        )
+        self.assertEqual(result, 0)
+        report = json.loads(output.getvalue())
+        self.assertEqual(report["schemaVersion"], 1)
+        self.assertEqual(report["ok"], True)
+        self.assertEqual(report["accepted"], True)
+
+        output = io.StringIO()
+        result = main(["mesh", "not-a-command"], environ=inherited, stdout=output)
+        self.assertEqual(result, 1)
+        invalid = json.loads(output.getvalue())
+        self.assertEqual(invalid["schemaVersion"], 1)
+        self.assertEqual(invalid["ok"], False)
+        self.assertEqual(invalid["error"]["code"], "invalid_input")
+
     def test_report_error_envelopes_and_malformed_config(self) -> None:
         _, listing = self.invoke(["mesh", "list", "--json"])
         base = [

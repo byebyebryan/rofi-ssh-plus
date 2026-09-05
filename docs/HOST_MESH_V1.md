@@ -99,6 +99,14 @@ silent defaults.
 rofi-ssh-plus mesh list --json
 ```
 
+The executable distinguishes the public CLI from Rofi script callbacks by the
+argv shape. With `ROFI_RETV` present, exactly one argv token `mesh` remains a
+literal picker-row selection; any following token enters the Host Mesh parser,
+including an invalid subcommand that returns the standard `invalid_input`
+envelope. Without `ROFI_RETV`, the existing `mesh ...` CLI behavior remains
+unchanged. This keeps valid `mesh list` and `mesh report-route` calls on the
+public contract path when invoked by another picker.
+
 Successful output has this shape:
 
 ```json

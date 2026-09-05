@@ -32,6 +32,24 @@ def _positive_env(env: Mapping[str, str], name: str, default: int) -> int:
     return value if value > 0 else default
 
 
+def _is_mesh_invocation(argv: Sequence[str], env: Mapping[str, str]) -> bool:
+    """Recognize explicit Host Mesh commands without stealing a Rofi row.
+
+    Rofi passes the selected row as ``argv[0]`` while retaining ``ROFI_*``
+    variables.  A row literally named ``mesh`` must therefore continue
+    through the picker callback.  Agent Plus invokes the public mesh command
+    from inside its own Rofi callback, so any explicit subcommand remains
+    recognized even when it inherits that environment. Invalid subcommands
+    still reach the parser and return the standard invalid-input envelope.
+    """
+
+    if not argv or argv[0] != "mesh":
+        return False
+    if "ROFI_RETV" not in env:
+        return True
+    return len(argv) > 1
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
@@ -41,7 +59,7 @@ def main(
     args = list(sys.argv[1:] if argv is None else argv)
     env = os.environ if environ is None else environ
     output_stream = stdout or sys.stdout
-    if args and args[0] == "mesh":
+    if _is_mesh_invocation(args, env):
         return _mesh_main(args[1:], env, output_stream)
     if args and args[0] == "--worker":
         if len(args) != 2:

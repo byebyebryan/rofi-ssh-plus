@@ -9,6 +9,11 @@ candidates, and route health shared by the other suite pickers.
 The current source implements the contract, although a tagged release has not
 yet published it. Consumers invoke `rofi-ssh-plus mesh ... --json` through
 `PATH`; they do not import this package or read its private state.
+With an inherited Rofi `ROFI_RETV`, exactly one argv token `mesh` is treated as
+the selected picker row. Any following token makes the invocation an explicit
+Host Mesh CLI command, including invalid subcommands so they receive the
+standard `invalid_input` envelope. Without `ROFI_RETV`, existing `mesh ...`
+CLI behavior is unchanged.
 
 ## Requirements
 
