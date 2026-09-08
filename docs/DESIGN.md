@@ -1,5 +1,10 @@
 # Design: rofi-ssh-plus
 
+Status: the picker, successful-connection history, and Host Mesh v1 provider
+are implemented, deployed, and accepted as part of P6 suite integration.
+Synchronous pre-launch probe latency remains a documented post-P6 performance
+follow-up rather than a functional blocker.
+
 ## Product boundary
 
 This project replaces the DMS SSH Plus presentation layer with a Rofi
