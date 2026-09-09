@@ -6,8 +6,9 @@ actually answered an SSH reachability check. It does not enumerate
 provides the Host Mesh Contract v1 process boundary for logical hosts, route
 candidates, and route health shared by the other suite pickers.
 
-The current source implements the contract, although a tagged release has not
-yet published it. Consumers invoke `rofi-ssh-plus mesh ... --json` through
+The current source implements the Host Mesh contract and P8 flat-scope
+navigation. The P8 changes have not yet been published or deployed through
+chezmoi. Consumers invoke `rofi-ssh-plus mesh ... --json` through
 `PATH`; they do not import this package or read its private state.
 With an inherited Rofi `ROFI_RETV`, exactly one argv token `mesh` is treated as
 the selected picker row. Any following token makes the invocation an explicit
@@ -71,13 +72,14 @@ rofi -show ssh-plus \
 The picker opens with configured logical hosts and recorded ad-hoc destinations
 ordered by frequency and labels the active lens as `SSH › Frequent` (or
 `SSH › Recent`) in the prompt. Right and Left switch to the next or previous
-lens, wrapping and persisting the choice; `Alt+s` remains a compatibility alias
-for switching. Type a new destination and press Ctrl+Enter to launch it; plain
-Enter selects the highlighted row. An ad-hoc destination is added only after
-the detached worker confirms that a server answered. A managed row tries its
-ordered routes and records one logical-host usage after a route answers. The
-terminal opens even when checks fail, so a password prompt or visible SSH error
-remains possible.
+lens, wrapping and persisting the choice; the typed filter is preserved and
+selection resets to the first matching row. `Alt+s` remains a compatibility
+alias for switching. Lens changes rerender cached state only. Type a new
+destination and press Ctrl+Enter to launch it; plain Enter selects the
+highlighted row. An ad-hoc destination is added only after the detached worker
+confirms that a server answered. A managed row tries its ordered routes and
+records one logical-host usage after a route answers. The terminal opens even
+when checks fail, so a password prompt or visible SSH error remains possible.
 
 ## Keys and actions
 
@@ -97,9 +99,11 @@ visible decoration never drives selection. Each row reserves two physical
 lines: the destination is primary and the secondary line contains connection
 count and relative age. The detail order follows the active lens: frequency
 first in `Frequent`, age first in `Recent`. The invocation remaps text-cursor
-movement to Ctrl+F/Ctrl+B so the arrow keys can switch lenses. Escape and
-Ctrl+G are explicitly configured as cancellation keys; Tab and Shift+Tab
-retain Rofi's normal row navigation.
+movement to Ctrl+F/Ctrl+B so the arrow keys can switch lenses. Lens callbacks
+emit Rofi's `keep-filter=true` header without `keep-selection`, preserving the
+query while resetting selection to the first eligible row. Escape and Ctrl+G
+are explicitly configured as native cancellation keys; Tab and Shift+Tab retain
+Rofi's normal row navigation.
 
 Frequency ordering is count descending, then last-connected descending. Recency
 ordering is last-connected descending, then count descending. A hostname is

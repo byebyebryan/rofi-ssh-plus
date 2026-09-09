@@ -4,17 +4,17 @@ Status: the picker, successful-connection history, and Host Mesh v1 provider
 are implemented, deployed, and accepted as part of P6 suite integration.
 P7 removes the synchronous terminal-launch gate for ad-hoc destinations
 and managed hosts with one route while preserving probe-first selection for
-multi-route fallback. Managed publication and deployment are coordinated
-through chezmoi. P8 flat-scope navigation is an accepted design target, not an
-implemented runtime claim.
+multi-route fallback. P8 flat-scope navigation is implemented in source;
+coordinated publication and deployment remain pending through chezmoi.
 
-## P8 navigation target
+## P8 navigation
 
 SSH Plus is already structurally flat: hosts are leaf rows and Frequent and
 Recent are peer ordering lenses. P8 retains that topology and the persisted
 lens preference. Left and Right continue to wrap between the two lenses, but
 the current filter is preserved and selection resets to the first eligible
-matching row after a lens change.
+matching row after a lens change. The implementation requests this with
+Rofi's `keep-filter=true` header and intentionally omits `keep-selection`.
 
 Tab and Shift+Tab remain Rofi-native row navigation; Enter connects to the
 selected host; and Escape plus Ctrl+G remain entirely on Rofi's native cancel
@@ -41,7 +41,7 @@ host IDs, aliases, ordered routes, and route health for `rofi-tmux-plus` and
 observations from explicit user connections so suite consumers cannot distort
 SSH frequency ranking.
 
-The target mesh-aware picker retains the existing Frequent and Recent lenses.
+The mesh-aware picker retains the existing Frequent and Recent lenses.
 Configured remote hosts are always visible as one logical row, while unmatched
 successful custom destinations remain ad-hoc. Selecting a managed row chooses
 among its routes; clearing its history never edits declarative configuration.
@@ -105,6 +105,13 @@ The executable handles Rofi's script callbacks:
   is the managed Right binding.
 - `ROFI_RETV=12`: move to the previous persisted sort lens and render again.
   This is the managed Left binding.
+
+Lens callbacks 10, 11, and 12 render the current state without discovery,
+route probing, terminal launch, or history mutation. Their output includes
+`keep-filter=true`, so Rofi preserves the active query, while omitting
+`keep-selection` so Rofi selects the first eligible matching row in the new
+ordering. Callback output continues to use the tab delimiter remembered from
+the initial render.
 
 Rows put the raw host before the NUL option separator and also provide it as
 both `info` and `meta`; selection therefore never depends on visible text.

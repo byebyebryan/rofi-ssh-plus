@@ -33,6 +33,8 @@ class ProtocolTests(unittest.TestCase):
         output = self.picker.render()
         self.assertIn("\x00use-hot-keys\x1ftrue", output)
         self.assertIn("\x00prompt\x1fSSH › Frequent", output)
+        self.assertNotIn("\x00keep-filter\x1ftrue", output)
+        self.assertNotIn("\x00keep-selection\x1ftrue", output)
         self.assertNotIn("\x00message\x1f", output)
         self.assertIn(f"\x00delim\x1f{ROFI_DELIMITER_VALUE}\n", output)
         self.assertIn("\x00display\x1falpha\n2 connects · just now", output)
@@ -74,7 +76,7 @@ class ProtocolTests(unittest.TestCase):
                 output = self.picker.dispatch(retv, [], {})
                 self.assertEqual(self.store.load().sort_mode, expected_mode)
                 self.assertIn(f"\x00prompt\x1f{expected_prompt}", output)
-                self.assertNotIn("\x00keep-filter\x1ftrue", output)
+                self.assertIn("\x00keep-filter\x1ftrue", output)
                 self.assertNotIn("\x00keep-selection\x1ftrue", output)
 
         self.assertIn("\x00display\x1fbeta\n1 connect · just now", output)
@@ -86,6 +88,8 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(self.store.load().sort_mode, SORT_RECENCY)
         self.assertIn("\x00use-hot-keys\x1ftrue", output)
         self.assertIn("\x00prompt\x1fSSH › Recent", output)
+        self.assertIn("\x00keep-filter\x1ftrue", output)
+        self.assertNotIn("\x00keep-selection\x1ftrue", output)
         self.assertNotIn("Sorted by", output)
         self.assertIn("beta\n", output)
 

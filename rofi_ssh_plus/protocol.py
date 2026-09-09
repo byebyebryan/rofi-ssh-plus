@@ -65,7 +65,7 @@ class Picker:
         if self.mesh is not None and self.store.mesh is None:
             self.store.mesh = self.mesh
 
-    def render(self, *, initial: bool = True) -> str:
+    def render(self, *, initial: bool = True, keep_filter: bool = False) -> str:
         state = self.store.load()
         headers = [
             _option("use-hot-keys", "true"),
@@ -73,6 +73,10 @@ class Picker:
                 "prompt", f"SSH › {SORT_MODE_LABELS.get(state.sort_mode, 'Frequent')}"
             ),
         ]
+        if keep_filter:
+            # Preserve the query while allowing Rofi to reset selection to
+            # the first eligible row.  Do not emit keep-selection here.
+            headers.append(_option("keep-filter", "true"))
         rendered_rows: list[str] = []
         ordered = self._sort_rows(self._rows(state.hosts), state.sort_mode)
         if ordered:
@@ -222,7 +226,7 @@ class Picker:
                 self.store.cycle_sort_mode(1)
             else:
                 self.store.cycle_sort_mode(-1)
-            return self.render(initial=False)
+            return self.render(initial=False, keep_filter=True)
 
         value = self._callback_value(retv, argv, environ)
         if retv == 1:
