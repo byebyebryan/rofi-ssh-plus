@@ -5,7 +5,26 @@ are implemented, deployed, and accepted as part of P6 suite integration.
 P7 removes the synchronous terminal-launch gate for ad-hoc destinations
 and managed hosts with one route while preserving probe-first selection for
 multi-route fallback. Managed publication and deployment are coordinated
-through chezmoi.
+through chezmoi. P8 flat-scope navigation is an accepted design target, not an
+implemented runtime claim.
+
+## P8 navigation target
+
+SSH Plus is already structurally flat: hosts are leaf rows and Frequent and
+Recent are peer ordering lenses. P8 retains that topology and the persisted
+lens preference. Left and Right continue to wrap between the two lenses, but
+the current filter is preserved and selection resets to the first eligible
+matching row after a lens change.
+
+Tab and Shift+Tab remain Rofi-native row navigation; Enter connects to the
+selected host; and Escape plus Ctrl+G remain entirely on Rofi's native cancel
+path. Neither cancellation key is a script callback. Ctrl+B and Ctrl+F retain
+filter-cursor movement after Left and Right are reassigned. A lens transition
+is a render of the current state and must not probe routes, launch a terminal,
+or mutate history.
+
+P8 does not change successful-connection history, ranking, custom input, route
+selection, or Host Mesh v1.
 
 ## Product boundary
 
