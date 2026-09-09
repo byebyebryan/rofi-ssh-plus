@@ -108,6 +108,63 @@ class LaunchTests(unittest.TestCase):
         )
         self.assertEqual(store.hosts, ["host"])
 
+    def test_worker_launches_before_probe_and_records_reached_server(self) -> None:
+        class FakeStore:
+            def __init__(self, events: list[tuple[str, object]]) -> None:
+                self.events = events
+
+            def record_success(self, host: str) -> None:
+                self.events.append(("record", host))
+
+        cases = (
+            ("reached", ProbeResult(255, "Permission denied", True), True, 0, True),
+            (
+                "unreached",
+                ProbeResult(255, "Connection refused", False),
+                True,
+                0,
+                False,
+            ),
+            ("launch failure", ProbeResult(0, "", True), False, 1, True),
+        )
+
+        def run_case(
+            probe_result: ProbeResult, launch_success: bool
+        ) -> tuple[int, list[tuple[str, object]]]:
+            events: list[tuple[str, object]] = []
+            store = FakeStore(events)
+
+            def probe(host: str, **kwargs: object) -> ProbeResult:
+                del kwargs
+                events.append(("probe", host))
+                return probe_result
+
+            def launch(argv: list[str]) -> bool:
+                events.append(("launch", list(argv)))
+                return launch_success
+
+            return (
+                run_worker(
+                    "Host",
+                    store=store,
+                    probe=probe,
+                    terminal_launcher=launch,
+                ),
+                events,
+            )
+
+        for name, probe_result, launch_success, expected_status, recorded in cases:
+            with self.subTest(name=name):
+                result, events = run_case(probe_result, launch_success)
+                self.assertEqual(result, expected_status)
+                expected_events = ["launch", "probe"]
+                if recorded:
+                    expected_events.append("record")
+                self.assertEqual([kind for kind, _value in events], expected_events)
+                self.assertEqual(events[0][1][-2:], ["ssh", "host"])
+                if recorded:
+                    self.assertEqual(events[-1], ("record", "host"))
+
     def test_worker_launches_even_when_state_write_fails(self) -> None:
         class BrokenStore:
             def record_success(self, host: str) -> None:

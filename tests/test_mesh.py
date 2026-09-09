@@ -569,6 +569,151 @@ class MarkerAndMigrationTests(unittest.TestCase):
                 [("beta", 1)],
             )
 
+    def test_single_route_managed_worker_launches_before_probe_and_records_logical_id(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory():
+            mesh = load_config(
+                FIXTURES / "config-multi-route.toml",
+                hostname=("alpha.example", "alpha"),
+            )
+            events: list[tuple[str, object]] = []
+
+            class EventStore:
+                def __init__(self) -> None:
+                    self.mesh = mesh
+                    self.hosts: list[str] = []
+
+                def record_success(self, host: str) -> None:
+                    events.append(("record", host))
+                    self.hosts.append(host)
+
+            store = EventStore()
+
+            def probe(route: str, **kwargs: object) -> ProbeResult:
+                del kwargs
+                events.append(("probe", route))
+                return ProbeResult(0, "", True)
+
+            def launch(argv: list[str]) -> bool:
+                events.append(("launch", list(argv)))
+                return True
+
+            result = run_managed_worker(
+                "gamma",
+                mesh=mesh,
+                store=store,
+                probe=probe,
+                terminal_launcher=launch,
+                terminal="foot",
+            )
+            self.assertEqual(result, 0)
+            self.assertEqual(
+                [kind for kind, _value in events], ["launch", "probe", "record"]
+            )
+            self.assertEqual(events[0][1][-2:], ["ssh", "gamma.test"])
+            self.assertEqual(events[1], ("probe", "gamma.test"))
+            self.assertEqual(store.hosts, ["gamma"])
+
+    def test_multi_route_managed_worker_probes_before_launch_and_falls_back(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory():
+            mesh = load_config(
+                FIXTURES / "config-multi-route.toml",
+                hostname=("alpha.example", "alpha"),
+            )
+            events: list[tuple[str, object]] = []
+
+            class EventStore:
+                def __init__(self) -> None:
+                    self.mesh = mesh
+                    self.hosts: list[str] = []
+
+                def record_success(self, host: str) -> None:
+                    events.append(("record", host))
+                    self.hosts.append(host)
+
+            store = EventStore()
+
+            def probe(route: str, **kwargs: object) -> ProbeResult:
+                del kwargs
+                events.append(("probe", route))
+                return ProbeResult(
+                    0 if route == "beta-lan.test" else 255,
+                    "" if route == "beta-lan.test" else "Connection refused",
+                    route == "beta-lan.test",
+                )
+
+            def launch(argv: list[str]) -> bool:
+                events.append(("launch", list(argv)))
+                return True
+
+            result = run_managed_worker(
+                "beta",
+                mesh=mesh,
+                store=store,
+                probe=probe,
+                terminal_launcher=launch,
+                terminal="foot",
+            )
+            self.assertEqual(result, 0)
+            self.assertEqual(
+                [kind for kind, _value in events],
+                ["probe", "probe", "record", "launch"],
+            )
+            self.assertEqual(
+                [value for kind, value in events if kind == "probe"],
+                ["beta-vpn.test", "beta-lan.test"],
+            )
+            self.assertEqual(events[-1][1][-2:], ["ssh", "beta-lan.test"])
+            self.assertEqual(store.hosts, ["beta"])
+
+    def test_multi_route_managed_worker_launches_first_route_without_history_when_unreached(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory():
+            mesh = load_config(
+                FIXTURES / "config-multi-route.toml",
+                hostname=("alpha.example", "alpha"),
+            )
+            events: list[tuple[str, object]] = []
+
+            class EventStore:
+                def __init__(self) -> None:
+                    self.mesh = mesh
+                    self.hosts: list[str] = []
+
+                def record_success(self, host: str) -> None:
+                    events.append(("record", host))
+                    self.hosts.append(host)
+
+            store = EventStore()
+
+            def probe(route: str, **kwargs: object) -> ProbeResult:
+                del kwargs
+                events.append(("probe", route))
+                return ProbeResult(255, "Connection refused", False)
+
+            def launch(argv: list[str]) -> bool:
+                events.append(("launch", list(argv)))
+                return True
+
+            result = run_managed_worker(
+                "beta",
+                mesh=mesh,
+                store=store,
+                probe=probe,
+                terminal_launcher=launch,
+                terminal="foot",
+            )
+            self.assertEqual(result, 0)
+            self.assertEqual(
+                [kind for kind, _value in events], ["probe", "probe", "launch"]
+            )
+            self.assertEqual(events[-1][1][-2:], ["ssh", "beta-vpn.test"])
+            self.assertEqual(store.hosts, [])
+
     def test_history_migration_folds_routes_and_retains_ad_hoc(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

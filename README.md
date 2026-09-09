@@ -174,8 +174,12 @@ Optional environment configuration is intentionally narrow:
   launch; it is passed as one argv element and does not accept extra options.
 
 The picker starts a detached worker, and the worker starts the terminal in a
-new session with standard input/output/error disconnected. Rofi can therefore
-exit immediately and the terminal does not depend on the worker's lifetime.
+new session with standard input/output/error disconnected. For ad-hoc and
+single-route managed hosts the terminal is started before the worker performs
+the history probe, so Rofi can exit and the terminal can appear immediately.
+Multi-route managed hosts remain probe-first so SSH Plus can select a reachable
+fallback. History is still written only when the separate bounded probe
+establishes that an SSH server answered.
 
 ## Limits and security choices
 

@@ -2,8 +2,10 @@
 
 Status: the picker, successful-connection history, and Host Mesh v1 provider
 are implemented, deployed, and accepted as part of P6 suite integration.
-Synchronous pre-launch probe latency remains a documented post-P6 performance
-follow-up rather than a functional blocker.
+P7 removes the synchronous terminal-launch gate for ad-hoc destinations
+and managed hosts with one route while preserving probe-first selection for
+multi-route fallback. Managed publication and deployment are coordinated
+through chezmoi.
 
 ## Product boundary
 
@@ -42,17 +44,20 @@ Rofi callback
           |
           +-- detached Python worker
                  |
-                 +-- bounded explicit-user SSH probe (or consumer marker command)
-                 +-- record success, if reached
-                 +-- detached terminal: <terminal> -e ssh <host>
+                 +-- ad-hoc / one route: terminal, then probe and record
+                 +-- multiple routes: probe, choose, record, then terminal
 ```
 
 The picker process never waits for SSH or a terminal. On selection it validates
 the raw destination, starts itself again with `--worker <host>`, disconnects
-the worker's standard streams, and exits. The worker probes synchronously so
-the state update occurs before its terminal launch. Both worker and terminal
-use a new session and `close_fds`; terminal launch is therefore independent of
-Rofi and of the worker process lifetime.
+the worker's standard streams, and exits. For ad-hoc destinations and managed
+hosts with one route, the worker launches the terminal before running the same
+bounded success-classification probe and history update. This removes probe
+latency from the visible terminal-launch path without treating terminal launch
+as connection evidence. Managed hosts with multiple routes still probe in
+health-ranked order before launching, because route choice depends on that
+result. Both worker and terminal use a new session and `close_fds`; terminal
+launch is independent of Rofi and of the worker process lifetime.
 
 The terminal is deliberately started even if the probe fails. This preserves
 the interactive SSH experience: a user may still want to inspect a password,

@@ -103,9 +103,11 @@ def run_worker(
     probe: Callable[..., ProbeResult] = run_probe,
     terminal_launcher: Callable[[Sequence[str]], bool] = spawn_detached,
 ) -> int:
-    """Probe, best-effort record, and launch the terminal in that order."""
+    """Launch the terminal, then probe and best-effort record its destination."""
 
     canonical = normalize_destination(host)
+    command = terminal_argv(canonical, terminal=terminal, ssh_command=ssh_command)
+    launch_success = terminal_launcher(command)
     try:
         result = probe(
             canonical, ssh_command=ssh_command, timeout=timeout, attempts=attempts
@@ -118,8 +120,7 @@ def run_worker(
         except (OSError, ValueError, RuntimeError):
             # A broken state path must not prevent the requested SSH session.
             pass
-    command = terminal_argv(canonical, terminal=terminal, ssh_command=ssh_command)
-    return 0 if terminal_launcher(command) else 1
+    return 0 if launch_success else 1
 
 
 def run_managed_worker(
@@ -132,7 +133,7 @@ def run_managed_worker(
     terminal: str | None = None,
     environ: Mapping[str, str] | None = None,
 ) -> int:
-    """Probe a logical host's recommended routes and launch exactly one route.
+    """Launch a logical host's one route or probe its ordered route fallback.
 
     Managed route selection intentionally uses SSH Plus's existing explicit
     reachability probe. Its ``classify_probe`` semantics treat recognized
@@ -156,7 +157,16 @@ def run_managed_worker(
         return 2
     chosen = routes[0]
     reached = False
+    launch_success: bool | None = None
     selected_probe = run_probe if probe is None else probe
+    if len(routes) == 1:
+        command = terminal_argv(
+            chosen.destination,
+            terminal=terminal,
+            ssh_command=selected_mesh.ssh_policy.executable,
+            preserve_spelling=True,
+        )
+        launch_success = terminal_launcher(command)
     for route in routes:
         try:
             result = selected_probe(
@@ -187,10 +197,12 @@ def run_managed_worker(
             selected_store.record_success(canonical_id)
         except (OSError, ValueError, RuntimeError):
             pass
-    command = terminal_argv(
-        chosen.destination,
-        terminal=terminal,
-        ssh_command=selected_mesh.ssh_policy.executable,
-        preserve_spelling=True,
-    )
-    return 0 if terminal_launcher(command) else 1
+    if launch_success is None:
+        command = terminal_argv(
+            chosen.destination,
+            terminal=terminal,
+            ssh_command=selected_mesh.ssh_policy.executable,
+            preserve_spelling=True,
+        )
+        launch_success = terminal_launcher(command)
+    return 0 if launch_success else 1
