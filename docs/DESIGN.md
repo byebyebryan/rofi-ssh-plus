@@ -4,8 +4,11 @@ Status: the picker, successful-connection history, and Host Mesh v1 provider
 are implemented, deployed, and accepted as part of P6 suite integration.
 P7 removes the synchronous terminal-launch gate for ad-hoc destinations
 and managed hosts with one route while preserving probe-first selection for
-multi-route fallback. P8 flat-scope navigation is implemented in source;
-coordinated publication and deployment remain pending through chezmoi.
+multi-route fallback. The coordinated P8 flat-scope navigation cutover is
+published, deployed, and operator-accepted. The P9 producer implementation and
+canonical bundle are published in this repository; managed suite deployment is
+coordinated through chezmoi while the Host Mesh v1 wire behavior stays
+compatible.
 
 ## P8 navigation
 
@@ -25,6 +28,34 @@ or mutate history.
 
 P8 does not change successful-connection history, ranking, custom input, route
 selection, or Host Mesh v1.
+
+## P9 locked CLI contracts
+
+P9 keeps Host Mesh as a local executable contract and makes its current v1
+wire format machine-verifiable. SSH Plus owns the complete canonical bundle:
+Draft 2020-12 JSON Schemas, machine metadata, normative semantic rules,
+checksums, and synthetic valid plus raw-invalid fixtures for `mesh list` and
+`mesh report-route`. Producer tests will validate actual success and error
+documents against those artifacts.
+
+The v1 runtime protocol does not gain a discovery command, package import, or
+second discriminator. The invoked command and existing `schemaVersion` remain
+the identity. Stdout is one strict UTF-8 JSON document followed by exactly one
+LF, stderr is bounded human diagnostics, and only a matching typed JSON
+error/nonzero-exit pair can authorize contract behavior. Numeric nonzero exit
+codes and stderr text are not semantic APIs.
+
+Tmux Plus and Agent Plus continue to validate Host Mesh independently. They
+vendor the complete small contract bundle with one exact `SOURCE.json`
+provenance record for offline conformance tests, but they do not import this
+package or read its configuration and state. A command that does not resolve
+through `PATH` remains the only local-only fallback; once a path resolves, a
+launch failure, timeout, overflow, malformed document, or unsupported schema
+remains a visible failure.
+
+P9 does not alter route order, Mesh revision, report monotonicity, reached-host
+markers, SSH history, or picker behavior. The coordinated suite design and
+rollout boundary live in the managed `rofi-plus-p9-cli-contracts.md` document.
 
 ## Product boundary
 

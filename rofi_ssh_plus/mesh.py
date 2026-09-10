@@ -36,6 +36,14 @@ DEFAULT_CONNECT_TIMEOUT_SECONDS = 2
 DEFAULT_CONNECTION_ATTEMPTS = 1
 DEFAULT_ROUTE_HEALTH_TTL_SECONDS = 300
 MAX_REPORT_CLOCK_SKEW_MS = 5 * 60 * 1000
+MAX_TIMESTAMP_MS = 2**63 - 1
+# Host Mesh v1's public profile is deliberately bounded independently from
+# private history and route-health state.  These limits are also published in
+# contracts/host-mesh-v1 and are enforced before a response is serialized.
+MAX_HOSTS = 128
+MAX_STRING_CODEPOINTS = 16_384
+MAX_SOURCE_CODEPOINTS = 64
+MAX_ERROR_MESSAGE_CODEPOINTS = 4_096
 HOST_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*\Z")
 _ALLOWED_TOP_LEVEL = {
     "schema_version",
@@ -74,6 +82,11 @@ def _casefold(value: str) -> str:
 def _token(value: object, *, label: str, identifier: bool = False) -> str:
     if not isinstance(value, str) or not value:
         raise MeshError("invalid_config", f"{label} must be a nonempty string")
+    if len(value) > MAX_STRING_CODEPOINTS:
+        raise MeshError(
+            "invalid_config",
+            f"{label} must contain at most {MAX_STRING_CODEPOINTS} characters",
+        )
     if value.strip() != value or value.startswith("-"):
         raise MeshError("invalid_config", f"{label} must be one SSH-safe token")
     if any(
@@ -93,6 +106,11 @@ def _token(value: object, *, label: str, identifier: bool = False) -> str:
 def _display(value: object, *, label: str) -> str:
     if not isinstance(value, str) or not value or value.strip() != value:
         raise MeshError("invalid_config", f"{label} must be a nonempty display string")
+    if len(value) > MAX_STRING_CODEPOINTS:
+        raise MeshError(
+            "invalid_config",
+            f"{label} must contain at most {MAX_STRING_CODEPOINTS} characters",
+        )
     if any(unicodedata.category(char).startswith("C") for char in value):
         raise MeshError(
             "invalid_config", f"{label} must not contain control characters"
@@ -285,6 +303,16 @@ class MeshConfig:
     ) -> dict[str, object]:
         """Serialize the public ``mesh list --json`` response."""
 
+        timestamp = current_time_ms() if generated_at is None else generated_at
+        if (
+            isinstance(timestamp, bool)
+            or not isinstance(timestamp, int)
+            or not 0 <= timestamp <= MAX_TIMESTAMP_MS
+        ):
+            raise MeshError(
+                "persistence_failed",
+                "generatedAt must be a nonnegative Unix-millisecond integer",
+            )
         host_values: list[dict[str, object]] = []
         for host in self.hosts:
             value = host.to_dict()
@@ -294,7 +322,7 @@ class MeshConfig:
             host_values.append(value)
         return {
             "schemaVersion": MESH_SCHEMA_VERSION,
-            "generatedAt": current_time_ms() if generated_at is None else generated_at,
+            "generatedAt": timestamp,
             "meshRevision": self.mesh_revision,
             "localHostId": self.local_host_id,
             "sshPolicy": self.ssh_policy.to_dict(),
@@ -394,16 +422,10 @@ def load_config(
             local_id = "localhost"
         aliases = list(_safe_inferred_aliases((full_hostname, short_hostname)))
         local_aliases = _dedupe_aliases(aliases or [local_id])
-        local_display = (
-            short_hostname
-            if isinstance(short_hostname, str)
-            and short_hostname
-            and short_hostname.strip() == short_hostname
-            and not any(
-                unicodedata.category(char).startswith("C") for char in short_hostname
-            )
-            else local_id
-        )
+        try:
+            local_display = _display(short_hostname, label="inferred hostname")
+        except MeshError:
+            local_display = local_id
         local = Host(local_id, local_display, True, local_aliases, ())
         return _with_revision(
             MeshConfig(
@@ -485,6 +507,10 @@ def load_config(
     raw_hosts = payload.get("hosts", [])
     if not isinstance(raw_hosts, list):
         raise MeshError("invalid_config", "hosts must be an array of tables")
+    if len(raw_hosts) + 1 > MAX_HOSTS:
+        raise MeshError(
+            "invalid_config", f"Host Mesh supports at most {MAX_HOSTS} hosts"
+        )
     hosts: list[Host] = [Host(local_id, local_display, True, local_aliases, ())]
     for index, raw_host in enumerate(raw_hosts):
         if not isinstance(raw_host, dict):
@@ -604,7 +630,7 @@ class RouteHealthStore:
         if (
             isinstance(observed_at, bool)
             or not isinstance(observed_at, int)
-            or observed_at < 0
+            or not 0 <= observed_at <= MAX_TIMESTAMP_MS
         ):
             raise MeshError(
                 "invalid_input",
@@ -742,7 +768,11 @@ class RouteHealthStore:
 def _health_time(value: object) -> int | None:
     if value is None:
         return None
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not 0 <= value <= MAX_TIMESTAMP_MS
+    ):
         raise MeshPersistenceError("invalid route-health timestamp")
     return value
 
@@ -760,7 +790,11 @@ def current_time_ms() -> int:
 
 
 def validate_report_time(value: object, *, now_ms: int | None = None) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not 0 <= value <= MAX_TIMESTAMP_MS
+    ):
         raise MeshError(
             "invalid_input", "observedAt must be a nonnegative Unix-millisecond integer"
         )
@@ -771,9 +805,10 @@ def validate_report_time(value: object, *, now_ms: int | None = None) -> int:
 
 
 def validate_source(value: object) -> str:
-    if not isinstance(value, str) or not value or len(value) > 64:
+    if not isinstance(value, str) or not value or len(value) > MAX_SOURCE_CODEPOINTS:
         raise MeshError(
-            "invalid_input", "source must be a nonempty label of at most 64 characters"
+            "invalid_input",
+            f"source must be a nonempty label of at most {MAX_SOURCE_CODEPOINTS} characters",
         )
     if any(
         char.isspace() or unicodedata.category(char).startswith("C") for char in value
@@ -792,6 +827,11 @@ def _input_token(value: object, *, label: str) -> str:
         or value.startswith("-")
     ):
         raise MeshError("invalid_input", f"{label} must be one nonempty SSH-safe token")
+    if len(value) > MAX_STRING_CODEPOINTS:
+        raise MeshError(
+            "invalid_input",
+            f"{label} must contain at most {MAX_STRING_CODEPOINTS} characters",
+        )
     if any(
         char.isspace() or unicodedata.category(char).startswith("C") for char in value
     ):
@@ -831,6 +871,11 @@ def report_route(
         )
     ):
         raise MeshError("invalid_input", "meshRevision must be a nonempty token")
+    if len(mesh_revision) > MAX_STRING_CODEPOINTS:
+        raise MeshError(
+            "invalid_input",
+            f"meshRevision must contain at most {MAX_STRING_CODEPOINTS} characters",
+        )
     if mesh_revision != mesh.mesh_revision:
         raise MeshError(
             "stale_mesh", "mesh revision does not match current configuration"

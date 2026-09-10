@@ -17,11 +17,14 @@ for name in sys.argv[1:]:
     if not path.is_file():
         continue
     data = path.read_bytes()
-    if data and not data.endswith(b"\n"):
+    # Raw byte fixtures intentionally exercise a missing final LF.  Every
+    # source/document file remains LF-terminated.
+    if path.suffix != ".bin" and data and not data.endswith(b"\n"):
         raise SystemExit(f"{name}: missing final newline")
-    for line_number, line in enumerate(data.splitlines(), 1):
-        if line.endswith((b" ", b"\t")):
-            raise SystemExit(f"{name}:{line_number}: trailing whitespace")
+    if path.suffix != ".bin":
+        for line_number, line in enumerate(data.splitlines(), 1):
+            if line.endswith((b" ", b"\t")):
+                raise SystemExit(f"{name}:{line_number}: trailing whitespace")
 PY
 
 python3 - <<'PY'
@@ -37,7 +40,6 @@ required = (
     "route-reports.json",
     "route-order.json",
     "reached-markers.json",
-    "history-migration.json",
     "envelopes.json",
 )
 for name in required:
@@ -58,6 +60,52 @@ expected_errors = {
 }
 if set(envelopes.get("errors", {})) != expected_errors:
     raise SystemExit("error-envelope fixture does not cover every stable code")
+PY
+
+python3 - <<'PY'
+import hashlib
+import re
+from pathlib import Path
+
+bundle = Path("contracts/host-mesh-v1")
+checksum_path = bundle / "SHA256SUMS"
+if not checksum_path.is_file():
+    raise SystemExit(f"missing contract checksum manifest: {checksum_path}")
+raw = checksum_path.read_bytes()
+if not raw.endswith(b"\n"):
+    raise SystemExit("SHA256SUMS: missing final newline")
+pattern = re.compile(rb"^([0-9a-f]{64})  ([^\x00\r\n]+)\n$")
+entries: list[tuple[str, str]] = []
+for line in raw.splitlines(keepends=True):
+    match = pattern.fullmatch(line)
+    if match is None:
+        raise SystemExit("SHA256SUMS: malformed entry")
+    digest, relative = match.groups()
+    name = relative.decode("utf-8")
+    path = Path(name)
+    if path.is_absolute() or ".." in path.parts or name == "SHA256SUMS":
+        raise SystemExit(f"SHA256SUMS: invalid path {name!r}")
+    entries.append((name, digest.decode("ascii")))
+names = [name for name, _digest in entries]
+if names != sorted(names, key=lambda name: name.encode("utf-8")) or len(
+    names
+) != len(set(names)):
+    raise SystemExit("SHA256SUMS: entries must be unique and bytewise sorted")
+actual = sorted(
+    (
+        str(path.relative_to(bundle)).replace("\\", "/")
+        for path in bundle.rglob("*")
+        if path.is_file() and path != checksum_path
+    ),
+    key=lambda name: name.encode("utf-8"),
+)
+if names != actual:
+    raise SystemExit("SHA256SUMS: file set does not match the complete bundle")
+for name, expected in entries:
+    actual_digest = hashlib.sha256((bundle / name).read_bytes()).hexdigest()
+    if actual_digest != expected:
+        raise SystemExit(f"SHA256SUMS: digest mismatch for {name}")
+print(f"[ok] Host Mesh bundle digest {hashlib.sha256(raw).hexdigest()}")
 PY
 
 test -x bin/rofi-ssh-plus

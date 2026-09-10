@@ -6,9 +6,10 @@ actually answered an SSH reachability check. It does not enumerate
 provides the Host Mesh Contract v1 process boundary for logical hosts, route
 candidates, and route health shared by the other suite pickers.
 
-The current source implements the Host Mesh contract and P8 flat-scope
-navigation. The P8 changes have not yet been published or deployed through
-chezmoi. Consumers invoke `rofi-ssh-plus mesh ... --json` through
+The current source implements the Host Mesh contract and the published,
+deployed P8 flat-scope navigation. Its canonical P9 contract bundle is under
+`contracts/host-mesh-v1/`. Consumers invoke
+`rofi-ssh-plus mesh ... --json` through
 `PATH`; they do not import this package or read its private state.
 With an inherited Rofi `ROFI_RETV`, exactly one argv token `mesh` is treated as
 the selected picker row. Any following token makes the invocation an explicit

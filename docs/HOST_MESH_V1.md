@@ -1,7 +1,8 @@
 # Host Mesh Contract v1
 
-Status: implemented in the current source; no tagged release has published
-this contract yet.
+Status: the P9 producer implementation and canonical machine-readable bundle
+are published in this repository. Managed suite deployment is coordinated
+through chezmoi.
 
 This contract makes `rofi-ssh-plus` the host and route authority for the Rofi
 SSH, tmux, and agent pickers. It is a local process contract, not a network
@@ -113,7 +114,7 @@ Successful output has this shape:
 {
   "schemaVersion": 1,
   "generatedAt": 1722743000123,
-  "meshRevision": "sha256:0123456789abcdef",
+  "meshRevision": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
   "localHostId": "desktop-a",
   "sshPolicy": {
     "executable": "ssh",
@@ -153,11 +154,12 @@ Successful output has this shape:
 }
 ```
 
-All timestamps are Unix milliseconds. `meshRevision` is an opaque digest of
-the normalized identity, route, and SSH-policy configuration. It changes when
-that configuration changes and does not change for usage-history or
-route-health updates. There is exactly one local descriptor, and it is first.
-Remote hosts follow declaration order.
+All timestamps are Unix milliseconds. `meshRevision` is `sha256:` followed by
+64 lowercase hexadecimal characters, representing a digest of the normalized
+identity, route, and SSH-policy configuration. It changes when that
+configuration changes and does not change for usage-history or route-health
+updates. There is exactly one local descriptor, and it is first. Remote hosts
+follow declaration order.
 
 A remote host's `routes` array is the current recommended attempt order;
 `configuredIndex` retains the deterministic base order. A route whose newest
@@ -178,7 +180,7 @@ rofi-ssh-plus mesh report-route --json \
   --route desktop-b-vpn.example \
   --status reachable \
   --source rofi-tmux-plus \
-  --mesh-revision sha256:0123456789abcdef \
+  --mesh-revision sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
   --observed-at 1722742999000
 ```
 
@@ -288,9 +290,12 @@ of this contract. Consumers use only the commands above.
 
 ## Errors and compatibility
 
-JSON commands write exactly one JSON document to stdout. On a contract,
-configuration, or persistence failure they return nonzero and write an error
-document of this form:
+JSON commands write exactly one strict UTF-8 JSON document followed by one LF
+byte to stdout. Host Mesh stdout is capped at 512 KiB including that LF and
+stderr is capped at 64 KiB. A list contains at most 128 hosts and general
+strings at most 16,384 Unicode code points (source labels are capped at 64 and
+error messages at 4,096). On a contract, configuration, or persistence failure
+they return nonzero and write an error document of this form:
 
 ```json
 {
@@ -305,8 +310,10 @@ document of this form:
 
 Human diagnostics may additionally be written to stderr. Consumers ignore
 unknown fields within schema version 1 and reject a schema version they do not
-support. A missing executable may be treated as local-only capability by a
-consumer; malformed or unsupported output must be surfaced rather than
+support. Error codes are bounded typed tokens rather than a closed
+enumeration; stable meanings are listed below and unknown codes are generic
+visible failures. A missing executable may be treated as local-only capability
+by a consumer; malformed or unsupported output must be surfaced rather than
 silently reinterpreted.
 
 Stable version-1 error codes are `invalid_input`, `invalid_config`,

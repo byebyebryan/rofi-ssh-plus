@@ -723,7 +723,8 @@ class MarkerAndMigrationTests(unittest.TestCase):
             )
             legacy = root / "legacy.json"
             migration_fixture = json.loads(
-                (FIXTURES / "history-migration.json").read_text(encoding="utf-8")
+                (Path(__file__).parent / "fixtures" / "history-migration.json")
+                .read_text(encoding="utf-8")
             )
             legacy.write_text(json.dumps(migration_fixture["legacy"]), encoding="utf-8")
             store = StateStore(root / "history.json", legacy, mesh=mesh)
