@@ -11,8 +11,8 @@ canonical bundle are published in this repository; managed suite deployment is
 coordinated through chezmoi while the Host Mesh v1 wire behavior stays
 compatible. The published post-P9 recent-only SSH refinement supersedes the
 original P8 Frequent/Recent lens, restores native Left/Right filter editing,
-and leaves the P9 wire contract unchanged. Managed deployment and
-fleet/operator acceptance are still pending.
+and leaves the P9 wire contract unchanged. Chezmoi owns managed deployment and
+fleet/operator acceptance status.
 
 ## P8 navigation and post-P9 SSH refinement
 
