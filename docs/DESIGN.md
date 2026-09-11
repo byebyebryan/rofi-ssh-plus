@@ -5,29 +5,44 @@ are implemented, deployed, and accepted as part of P6 suite integration.
 P7 removes the synchronous terminal-launch gate for ad-hoc destinations
 and managed hosts with one route while preserving probe-first selection for
 multi-route fallback. The coordinated P8 flat-scope navigation cutover is
-published, deployed, and operator-accepted. The P9 producer implementation and
+published and deployed, with operator acceptance complete on Snap and
+Starship; Carbon is in a daily-drive soak. The P9 producer implementation and
 canonical bundle are published in this repository; managed suite deployment is
 coordinated through chezmoi while the Host Mesh v1 wire behavior stays
-compatible.
+compatible. A subsequent post-P9 recent-only SSH refinement supersedes the
+original P8 Frequent/Recent lens, restores native Left/Right filter editing,
+and leaves the P9 wire contract unchanged. This refinement is an uncommitted
+candidate in the current checkout; it still needs publication, deployment,
+and fleet/operator acceptance.
 
-## P8 navigation
+## P8 navigation and post-P9 SSH refinement
 
-SSH Plus is already structurally flat: hosts are leaf rows and Frequent and
-Recent are peer ordering lenses. P8 retains that topology and the persisted
-lens preference. Left and Right continue to wrap between the two lenses, but
-the current filter is preserved and selection resets to the first eligible
-matching row after a lens change. The implementation requests this with
-Rofi's `keep-filter=true` header and intentionally omits `keep-selection`.
+P8 made SSH Plus structurally flat: hosts are leaf rows and there is no peer
+view, while retaining its existing Frequent/Recent ordering lens. The
+post-P9 refinement below supersedes only that SSH lens and ordering choice.
+
+### Post-P9 recent-only SSH refinement
+
+SSH Plus now has one recent-only view. Hosts are leaf rows and there is no peer
+view.
+
+Successful destinations are ordered by `lastConnected` descending; count is
+metadata only and never a ranking key. Equal timestamps use deterministic
+Host Mesh declaration/name tie-breakers, while never-used managed hosts remain
+in declaration order after all used rows. Left and Right therefore retain
+Rofi's native filter-cursor actions instead of switching a meaningless view.
 
 Tab and Shift+Tab remain Rofi-native row navigation; Enter connects to the
 selected host; and Escape plus Ctrl+G remain entirely on Rofi's native cancel
-path. Neither cancellation key is a script callback. Ctrl+B and Ctrl+F retain
-filter-cursor movement after Left and Right are reassigned. A lens transition
-is a render of the current state and must not probe routes, launch a terminal,
-or mutate history.
+path. Neither cancellation key is a script callback. Already-open P8 windows
+may still send callbacks 10, 11, or 12; these render the same recent-only rows,
+preserve the filter, and do not rewrite history merely to normalize
+`sortMode`, probe routes, launch a terminal, or capture cancellation.
 
-P8 does not change successful-connection history, ranking, custom input, route
-selection, or Host Mesh v1.
+The original P8 cutover did not change successful-connection history, custom
+input, route selection, or Host Mesh v1. P9 itself did not change picker
+behavior; this subsequent refinement changes only SSH presentation/state
+ordering and leaves the P9 wire contracts unchanged.
 
 ## P9 locked CLI contracts
 
@@ -70,9 +85,12 @@ The current source owns successful-destination history and implements the
 host IDs, aliases, ordered routes, and route health for `rofi-tmux-plus` and
 `rofi-agent-plus`. The contract deliberately separates background route-health
 observations from explicit user connections so suite consumers cannot distort
-SSH frequency ranking.
+SSH recency.
 
-The mesh-aware picker retains the existing Frequent and Recent lenses.
+The mesh-aware picker has one recent-only ordering. It retains the v1
+`sortMode` field for rollback-compatible state reads and treats every missing,
+invalid, or legacy `frequency` value as `recency` without rewriting state until
+the next real mutation. History is never reset.
 Configured remote hosts are always visible as one logical row, while unmatched
 successful custom destinations remain ad-hoc. Selecting a managed row chooses
 among its routes; clearing its history never edits declarative configuration.
@@ -131,36 +149,33 @@ The executable handles Rofi's script callbacks:
   `ROFI_INPUT` for builds that expose it; this is the Ctrl+Enter
   (`kb-accept-custom`) path and starts a worker before returning no rows.
 - `ROFI_RETV=3`: remove the selected `ROFI_INFO` host and render again.
-- `ROFI_RETV=10`: toggle persisted sort mode and render again.
-- `ROFI_RETV=11`: move to the next persisted sort lens and render again. This
-  is the managed Right binding.
-- `ROFI_RETV=12`: move to the previous persisted sort lens and render again.
-  This is the managed Left binding.
+- `ROFI_RETV=10`, `11`, or `12`: compatibility callbacks from already-open P8
+  windows. Render the recent-only rows again without rewriting legacy
+  `sortMode`, probing routes, launching a terminal, or applying callback-owned
+  key semantics.
 
-Lens callbacks 10, 11, and 12 render the current state without discovery,
-route probing, terminal launch, or history mutation. Their output includes
-`keep-filter=true`, so Rofi preserves the active query, while omitting
-`keep-selection` so Rofi selects the first eligible matching row in the new
-ordering. Callback output continues to use the tab delimiter remembered from
-the initial render.
+Compatibility callbacks 10, 11, and 12 render the current state without
+discovery, route probing, terminal launch, or history mutation merely to
+normalize the retired sort field. Their output
+includes `keep-filter=true`, so Rofi preserves the active query, while omitting
+`keep-selection` so Rofi selects the first eligible matching row. Callback
+output continues to use the tab delimiter remembered from the initial render.
 
 Rows put the raw host before the NUL option separator and also provide it as
 both `info` and `meta`; selection therefore never depends on visible text.
 Their `display` value contains two physical lines: the host, followed by
-connection count and compact relative age. Frequency detail is count-first;
-recency detail is age-first. The output declares a tab record delimiter so the
-display newline remains inside one row. The delimiter is declared using the
-default newline only on the initial render; callback headers and rows use the
-remembered tab delimiter. The prompt identifies the active lens as
-`SSH › Frequent` or `SSH › Recent`.
+connection count and compact relative age, always age-first. The output
+declares a tab record delimiter so the display newline remains inside one row.
+The delimiter is declared using the default newline only on the initial render;
+callback headers and rows use the remembered tab delimiter. The prompt is
+simply `SSH`.
 
 The initial and every re-rendered output contains `use-hot-keys=true`, which is
 required for Rofi to emit custom-key callbacks. Plain Enter activates the
-highlighted row; Ctrl+Enter is the reliable custom-input action. The managed
-invocation assigns Right and Left to callbacks 11 and 12, and remaps text
-cursor movement to Ctrl+F/Ctrl+B. Rofi's default Tab and Shift+Tab row
-navigation remains available. Alt+S remains callback 10 as a compatibility
-toggle. Escape and Ctrl+G are explicitly configured as cancellation keys;
+highlighted row; Ctrl+Enter is the reliable custom-input action. SSH leaves
+Left/Right and Ctrl+B/Ctrl+F as Rofi-native filter-cursor actions because it
+has no peer view. Rofi's default Tab and Shift+Tab row navigation remains
+available. Escape and Ctrl+G are explicitly configured as cancellation keys;
 there is no layered navigation or Escape-back behavior.
 
 The state model is independent of protocol rendering, and subprocess argv
@@ -176,7 +191,7 @@ Its schema is:
 ```json
 {
   "version": 1,
-  "sortMode": "frequency",
+  "sortMode": "recency",
   "hosts": [
     {"host": "example", "lastConnected": 1722743000123, "count": 5}
   ]
@@ -192,7 +207,8 @@ The legacy file is read-only and is never imported again once the generic file
 exists. Duplicate legacy identities merge by adding counts and retaining the
 newest timestamp. Missing or invalid count/timestamp fields receive safe
 defaults (`1` and `0`) so a valid host is not discarded merely for partial
-metadata.
+metadata. Missing, invalid, and legacy `sortMode` values are accepted as
+recency-only reads and are normalized on the next real write.
 
 Every read-or-mutate operation opens a sibling lock file and takes an advisory
 exclusive lock. Mutations serialize a complete current snapshot to a private
@@ -227,9 +243,9 @@ interpolated into `sh -c`. Terminal settings may contain a conventional
 space-separated command prefix and are parsed with `shlex.split`; malformed or
 empty values fall back to `ghostty`.
 
-History is capped at 100 entries, with the least useful records dropped using
-the active ordering. Files and containing directories are private where
-possible. The detached worker inherits the user's environment so XDG state,
+History is capped at 100 entries, with the oldest records dropped using
+recency and deterministic non-frequency tie-breakers. Files and containing
+directories are private where possible. The detached worker inherits the user's environment so XDG state,
 terminal, and optional command settings remain consistent with the picker.
 The supported optional knobs are `TERMINAL`, positive
 `ROFI_SSH_PLUS_CONNECT_TIMEOUT`, and the single-executable

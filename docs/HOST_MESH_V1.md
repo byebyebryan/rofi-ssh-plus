@@ -249,16 +249,20 @@ but `terminalLaunched` means only that the local terminal process was started.
 
 ## Target SSH picker behavior
 
-Host Mesh does not add another top-level SSH view. `SSH › Frequent` and
-`SSH › Recent` each show one row per configured remote logical host plus
-successful ad-hoc destinations that do not correlate to a managed host. The
-local descriptor is not an SSH destination and is omitted.
+Host Mesh does not add another top-level SSH view. SSH Plus shows one row per
+configured remote logical host plus successful ad-hoc destinations that do not
+correlate to a managed host. The local descriptor is not an SSH destination and
+is omitted.
+
+The recent-only ordering described below is a post-P9 SSH picker refinement;
+the original P8 navigation retained the Frequent/Recent lens. This refinement
+does not change Host Mesh v1 wire behavior or any consumer contract.
 
 Configured hosts are visible before their first connection. They have count
-zero and an unknown age. Frequent sorts by count, last connection, then stable
-display identity. Recent sorts rows with a connection time newest first, then
-never-connected managed hosts in mesh declaration order. Background route
-health never participates in either usage ranking.
+zero and an unknown age. Used rows sort by last connection newest first, with
+stable non-frequency tie-breakers; never-connected managed hosts follow in mesh
+declaration order. Background route health never participates in usage
+ordering.
 
 Selecting a managed host tries its recommended routes in order using SSH
 Plus's explicit-user reachability probe. The first route that answers under the
@@ -278,10 +282,10 @@ than being discarded.
 
 ## Usage history versus route health
 
-The SSH picker's frequency and recency statistics measure explicit user
-connections launched through SSH Plus. Background discovery from Tmux Plus or
-Agent Plus updates route health only. It must not increment connection count
-or `lastConnected`.
+The SSH picker's usage count and recency measure explicit user connections
+launched through SSH Plus. Count is retained as row metadata but does not order
+rows. Background discovery from Tmux Plus or Agent Plus updates route health
+only. It must not increment connection count or `lastConnected`.
 
 The current version-1 history file remains private implementation state. Its
 mesh-aware migration correlates raw destinations to logical host IDs using the

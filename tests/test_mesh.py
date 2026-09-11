@@ -19,6 +19,7 @@ from rofi_ssh_plus.mesh import (
     load_config,
     report_route,
 )
+from rofi_ssh_plus.model import HostRecord
 from rofi_ssh_plus.probe import (
     ProbeResult,
     build_reached_wrapper,
@@ -295,7 +296,9 @@ class MeshCliTests(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertEqual(duplicate["accepted"], False)
 
-    def test_mesh_dispatch_keeps_inherited_cli_and_literal_row_callbacks_distinct(self) -> None:
+    def test_mesh_dispatch_keeps_inherited_cli_and_literal_row_callbacks_distinct(
+        self,
+    ) -> None:
         inherited = {
             **self.environment,
             "ROFI_RETV": "1",
@@ -723,8 +726,9 @@ class MarkerAndMigrationTests(unittest.TestCase):
             )
             legacy = root / "legacy.json"
             migration_fixture = json.loads(
-                (Path(__file__).parent / "fixtures" / "history-migration.json")
-                .read_text(encoding="utf-8")
+                (
+                    Path(__file__).parent / "fixtures" / "history-migration.json"
+                ).read_text(encoding="utf-8")
             )
             legacy.write_text(json.dumps(migration_fixture["legacy"]), encoding="utf-8")
             store = StateStore(root / "history.json", legacy, mesh=mesh)
@@ -755,7 +759,7 @@ class MarkerAndMigrationTests(unittest.TestCase):
                 ),
             )
             output = picker.render()
-            self.assertIn("\x00display\x1fBeta\n0 connects · never", output)
+            self.assertIn("\x00display\x1fBeta\nnever · 0 connects", output)
             self.assertEqual(picker.dispatch(1, ["Beta"], {"ROFI_INFO": "beta"}), "")
             self.assertEqual(selected, ["beta"])
             launched: list[list[str]] = []
@@ -778,6 +782,49 @@ class MarkerAndMigrationTests(unittest.TestCase):
             self.assertEqual(
                 [(record.host, record.count) for record in store.load().hosts],
                 [("beta", 1)],
+            )
+
+    def test_mesh_rows_sort_by_recency_then_keep_unused_declaration_order(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = write_config(
+                Path(directory),
+                text="""schema_version = 1
+local_id = "alpha"
+local_display = "Alpha"
+[ssh]
+executable = "ssh"
+connect_timeout_seconds = 2
+connection_attempts = 1
+route_health_ttl_seconds = 300
+[[hosts]]
+id = "beta"
+display = "Beta"
+routes = ["beta.test"]
+[[hosts]]
+id = "gamma"
+display = "Gamma"
+routes = ["gamma.test"]
+""",
+            )
+            mesh = load_config(path, hostname=("alpha.example", "alpha"))
+            picker = Picker(
+                StateStore(Path(directory) / "history.json", mesh=mesh), mesh=mesh
+            )
+            rows = picker._rows(
+                [
+                    HostRecord("beta", 100, 1),
+                    HostRecord("gamma", 100, 99),
+                    HostRecord("ad-hoc.test", 200, 1),
+                ]
+            )
+            self.assertEqual(
+                [row.key for row in picker._sort_rows(rows)],
+                ["ad-hoc.test", "beta", "gamma"],
+            )
+            unused = picker._rows([HostRecord("ad-hoc.test", 200, 1)])
+            self.assertEqual(
+                [row.key for row in picker._sort_rows(unused)],
+                ["ad-hoc.test", "beta", "gamma"],
             )
 
 

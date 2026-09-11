@@ -17,8 +17,6 @@ except ImportError:  # pragma: no cover - this application targets Linux
 
 from .mesh import MeshConfig
 from .model import (
-    SORT_FREQUENCY,
-    SORT_MODES,
     HistoryState,
     HostRecord,
     InvalidDestination,
@@ -107,8 +105,8 @@ class StateStore:
                     break
             else:
                 records.append(HostRecord(canonical, timestamp, 1))
-            records = self._trim(records, state.sort_mode)
-            result = HistoryState(tuple(records), state.sort_mode)
+            records = self._trim(records)
+            result = HistoryState(tuple(records))
             self._write_unlocked(result)
             return result
 
@@ -120,46 +118,13 @@ class StateStore:
                 record for record in state.hosts if record.host.casefold() != canonical
             ]
             removed = len(records) != len(state.hosts)
-            result = HistoryState(tuple(records), state.sort_mode)
+            result = HistoryState(tuple(records))
             if removed:
                 self._write_unlocked(result)
             return removed, result
 
-    def set_sort_mode(self, sort_mode: str) -> HistoryState:
-        if sort_mode not in SORT_MODES:
-            raise ValueError(f"unknown sort mode: {sort_mode}")
-        with self._locked():
-            state = self._load_and_initialize_unlocked()
-            result = HistoryState(state.hosts, sort_mode)
-            self._write_unlocked(result)
-            return result
-
-    def toggle_sort_mode(self) -> HistoryState:
-        """Toggle between the two persisted sort lenses."""
-
-        return self.cycle_sort_mode(1)
-
-    def cycle_sort_mode(self, direction: int) -> HistoryState:
-        """Move to the neighboring sort lens and persist it atomically.
-
-        ``direction`` is deliberately limited to one step in either
-        direction.  The mode tuple is the source of truth for the cycle, so
-        adding another supported lens later will retain normal wrap-around
-        semantics without changing the on-disk schema.
-        """
-
-        if direction not in (-1, 1):
-            raise ValueError("sort mode direction must be -1 or 1")
-        with self._locked():
-            state = self._load_and_initialize_unlocked()
-            index = SORT_MODES.index(state.sort_mode)
-            next_mode = SORT_MODES[(index + direction) % len(SORT_MODES)]
-            result = HistoryState(state.hosts, next_mode)
-            self._write_unlocked(result)
-            return result
-
-    def _trim(self, records: list[HostRecord], sort_mode: str) -> list[HostRecord]:
-        return sort_hosts(records, sort_mode)[: self.max_hosts]
+    def _trim(self, records: list[HostRecord]) -> list[HostRecord]:
+        return sort_hosts(records)[: self.max_hosts]
 
     @contextmanager
     def _locked(self) -> Iterator[None]:
@@ -197,15 +162,13 @@ class StateStore:
         except (OSError, ValueError, TypeError):
             return HistoryState(())
         state = self._state_from_payload(payload)
-        # A pre-mesh generic history can contain route destinations from the
-        # old picker.  Persist the folded logical-host representation once it
-        # is first observed with a mesh, so subsequent consumers see one
-        # durable identity and do not repeat the migration work.
+        # With a mesh, persist canonical version/host data when it changes. A
+        # legacy, missing, or invalid sortMode is accepted as recent-only and
+        # remains untouched until a real mutation writes the v1 field.
         if self.mesh is not None and isinstance(payload, dict):
             normalized = state.to_dict()
             if (
                 payload.get("version") != normalized["version"]
-                or payload.get("sortMode") != normalized["sortMode"]
                 or payload.get("hosts") != normalized["hosts"]
             ):
                 self._write_unlocked(state)
@@ -229,9 +192,10 @@ class StateStore:
         raw_hosts = payload.get("hosts")
         if not isinstance(raw_hosts, list):
             return HistoryState(())
-        sort_mode = payload.get("sortMode", payload.get("sort_mode", SORT_FREQUENCY))
-        if sort_mode not in SORT_MODES:
-            sort_mode = SORT_FREQUENCY
+        # ``sortMode`` was part of the v1 P8 state.  Accept any legacy
+        # spelling/value and rank every valid payload by recency while
+        # retaining all host records.  The compatibility field is emitted
+        # only when a later write serializes the state.
         records: dict[str, HostRecord] = {}
         for raw in raw_hosts:
             if not isinstance(raw, dict):
@@ -255,12 +219,7 @@ class StateStore:
                     max(existing.last_connected, record.last_connected),
                     existing.count + record.count,
                 )
-        result = HistoryState(
-            tuple(self._trim(list(records.values()), sort_mode)), sort_mode
-        )
-        if legacy:
-            return HistoryState(result.hosts, SORT_FREQUENCY)
-        return result
+        return HistoryState(tuple(self._trim(list(records.values()))))
 
     def _history_key(self, host: object) -> str:
         canonical = normalize_destination(host)  # type: ignore[arg-type]

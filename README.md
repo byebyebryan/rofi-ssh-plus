@@ -7,7 +7,10 @@ provides the Host Mesh Contract v1 process boundary for logical hosts, route
 candidates, and route health shared by the other suite pickers.
 
 The current source implements the Host Mesh contract and the published,
-deployed P8 flat-scope navigation. Its canonical P9 contract bundle is under
+deployed P8 flat-scope navigation. A post-P9 recent-only SSH refinement is
+being reviewed in this checkout; it supersedes the original P8 Frequent/Recent
+lens without changing the Host Mesh wire contract and is not yet published or
+deployed. Its canonical P9 contract bundle is under
 `contracts/host-mesh-v1/`. Consumers invoke
 `rofi-ssh-plus mesh ... --json` through
 `PATH`; they do not import this package or read its private state.
@@ -43,12 +46,7 @@ A direct invocation is:
 ```sh
 rofi -show ssh-plus \
   -modes "ssh-plus:/absolute/path/to/rofi-ssh-plus/bin/rofi-ssh-plus" \
-  -theme-str 'entry { placeholder: "Filter or type host · ←/→ order · Ctrl+Enter new"; }' \
-  -kb-custom-1 Alt+s \
-  -kb-move-char-forward Control+f \
-  -kb-move-char-back Control+b \
-  -kb-custom-2 Right \
-  -kb-custom-3 Left \
+  -theme-str 'entry { placeholder: "Filter or type host · Enter connect · Ctrl+Enter new"; }' \
   -kb-cancel Escape,Control+g \
   -kb-accept-custom Control+Return \
   -eh 2
@@ -61,21 +59,18 @@ Create an absolute symlink to the checkout under the `ssh-plus` name in
 ln -s /absolute/path/to/rofi-ssh-plus/bin/rofi-ssh-plus \
   ~/.config/rofi/scripts/ssh-plus
 rofi -show ssh-plus \
-  -theme-str 'entry { placeholder: "Filter or type host · ←/→ order · Ctrl+Enter new"; }' \
-  -kb-custom-1 Alt+s \
-  -kb-move-char-forward Control+f -kb-move-char-back Control+b \
-  -kb-custom-2 Right -kb-custom-3 Left \
+  -theme-str 'entry { placeholder: "Filter or type host · Enter connect · Ctrl+Enter new"; }' \
   -kb-cancel Escape,Control+g \
   -kb-accept-custom Control+Return \
   -eh 2
 ```
 
 The picker opens with configured logical hosts and recorded ad-hoc destinations
-ordered by frequency and labels the active lens as `SSH › Frequent` (or
-`SSH › Recent`) in the prompt. Right and Left switch to the next or previous
-lens, wrapping and persisting the choice; the typed filter is preserved and
-selection resets to the first matching row. `Alt+s` remains a compatibility
-alias for switching. Lens changes rerender cached state only. Type a new
+ordered strictly by most recent successful connection. Used destinations sort
+by descending `lastConnected`; equal timestamps use deterministic host mesh
+declaration/name tie-breakers and never use connection count. Never-used managed
+hosts follow in Host Mesh declaration order. The prompt is simply `SSH`.
+Connection count remains secondary metadata after relative age. Type a new
 destination and press Ctrl+Enter to launch it; plain Enter selects the
 highlighted row. An ad-hoc destination is added only after the detached worker
 confirms that a server answered. A managed row tries its ordered routes and
@@ -87,28 +82,28 @@ when checks fail, so a password prompt or visible SSH error remains possible.
 | Key/action | Behavior |
 | --- | --- |
 | Up/Down, Ctrl-P/Ctrl-N, Tab/Shift+Tab | Navigate rows using Rofi defaults |
-| Right | Switch to the next ordering lens (frequency → recency → frequency) |
-| Left | Switch to the previous ordering lens (frequency → recency → frequency) |
+| Left/Right | Move the filter cursor using Rofi defaults |
 | Enter | Connect to the selected recorded host |
 | Typed input + Ctrl+Enter | Probe and connect to a new destination |
 | Shift+Delete | Remove the selected destination from history |
-| `Alt+s` (`-kb-custom-1 Alt+s`) | Compatibility alias for switching ordering |
 | Escape, Ctrl+G | Close the picker |
 
 The selected row keeps its raw destination in Rofi's `info` and `meta` fields;
 visible decoration never drives selection. Each row reserves two physical
-lines: the destination is primary and the secondary line contains connection
-count and relative age. The detail order follows the active lens: frequency
-first in `Frequent`, age first in `Recent`. The invocation remaps text-cursor
-movement to Ctrl+F/Ctrl+B so the arrow keys can switch lenses. Lens callbacks
-emit Rofi's `keep-filter=true` header without `keep-selection`, preserving the
-query while resetting selection to the first eligible row. Escape and Ctrl+G
-are explicitly configured as native cancellation keys; Tab and Shift+Tab retain
-Rofi's normal row navigation.
+lines: the destination is primary and the secondary line contains relative age
+followed by connection count. SSH has no peer view, so Left/Right and
+Ctrl+B/Ctrl+F retain Rofi's native filter-cursor behavior. Already-open P8
+windows may still send callbacks 10, 11, or 12; they perform a recent-only
+rerender without rewriting history merely to normalize `sortMode`, with
+`keep-filter=true` preserving the query while resetting selection to the first
+eligible row. Escape and Ctrl+G are explicitly
+configured as native cancellation keys; Tab and Shift+Tab retain Rofi's normal
+row navigation.
 
-Frequency ordering is count descending, then last-connected descending. Recency
-ordering is last-connected descending, then count descending. A hostname is
-compared case-insensitively and stored in its canonical lower-case form.
+A hostname is compared case-insensitively and stored in its canonical lower-case
+form. Connection counts are retained for metadata and migration but never
+participate in ordering. Legacy, missing, or invalid `sortMode` is read as
+recent-only and normalized on the next real write.
 
 ## State and migration
 
@@ -124,6 +119,11 @@ configured managed hosts with no usage record are rendered with zero count and
 unknown age.
 The parent directory is private (`0700`), the state and lock files are private
 (`0600`), updates use an advisory lock and an atomic same-directory replace.
+
+Schema version 1 retains `sortMode` for rollback compatibility, but its value is
+not a user-visible setting. Missing, invalid, or legacy `frequency` values are
+accepted and normalized to `recency` on the next write without resetting hosts,
+timestamps, or counts. New writes always use `sortMode: "recency"`.
 
 The optional strict Host Mesh configuration is:
 

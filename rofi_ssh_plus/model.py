@@ -11,9 +11,9 @@ import unicodedata
 from dataclasses import dataclass
 from typing import Any
 
-SORT_FREQUENCY = "frequency"
+# Schema v1 retains this compatibility value in serialized state.  It is not
+# an active ordering mode or part of the picker API.
 SORT_RECENCY = "recency"
-SORT_MODES = (SORT_FREQUENCY, SORT_RECENCY)
 
 
 class InvalidDestination(ValueError):
@@ -44,10 +44,11 @@ def validate_destination(value: str) -> str:
     if value.startswith("-"):
         raise InvalidDestination("option-like destinations are not allowed")
     if any(
-        char.isspace() or unicodedata.category(char).startswith("C")
-        for char in value
+        char.isspace() or unicodedata.category(char).startswith("C") for char in value
     ):
-        raise InvalidDestination("destination must not contain whitespace or control characters")
+        raise InvalidDestination(
+            "destination must not contain whitespace or control characters"
+        )
     return value
 
 
@@ -78,15 +79,13 @@ class HistoryState:
     """Validated generic state loaded from disk."""
 
     hosts: tuple[HostRecord, ...]
-    sort_mode: str = SORT_FREQUENCY
-
-    @property
-    def sortMode(self) -> str:
-        return self.sort_mode
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "version": 1,
-            "sortMode": self.sort_mode,
+            # Keep the schema-v1 field for rollback compatibility.  It is
+            # emitted only when state is written; reads do not rewrite a
+            # legacy value merely to normalize this field.
+            "sortMode": SORT_RECENCY,
             "hosts": [host.to_dict() for host in self.hosts],
         }

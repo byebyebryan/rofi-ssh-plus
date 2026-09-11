@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import json
-import os
 import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from rofi_ssh_plus.model import SORT_FREQUENCY, SORT_RECENCY
+from rofi_ssh_plus.model import SORT_RECENCY, HostRecord
 from rofi_ssh_plus.state import SCHEMA_VERSION, StateStore
 
 
@@ -40,7 +39,6 @@ class StateStoreTests(unittest.TestCase):
         )
         store = StateStore(self.path, self.legacy)
         state = store.load()
-        self.assertEqual(state.sort_mode, SORT_FREQUENCY)
         self.assertEqual(
             [(h.host, h.last_connected, h.count) for h in state.hosts],
             [("alpha", 300, 6), ("beta", 0, 3), ("missing-fields", 0, 1)],
@@ -51,7 +49,9 @@ class StateStoreTests(unittest.TestCase):
         self.assertEqual(self.path.stat().st_mode & 0o777, 0o600)
         self.assertEqual(self.path.parent.stat().st_mode & 0o777, 0o700)
 
-        self.write_legacy({"hosts": [{"host": "new-host", "count": 99, "lastConnected": 999}]})
+        self.write_legacy(
+            {"hosts": [{"host": "new-host", "count": 99, "lastConnected": 999}]}
+        )
         self.assertNotIn("new-host", {h.host for h in store.load().hosts})
 
     def test_missing_or_malformed_legacy_still_creates_one_time_state(self) -> None:
@@ -60,19 +60,32 @@ class StateStoreTests(unittest.TestCase):
         store = StateStore(self.path, self.legacy)
         self.assertEqual(store.load().hosts, ())
         self.assertTrue(self.path.exists())
-        self.legacy.write_text(json.dumps({"hosts": [{"host": "later"}]}), encoding="utf-8")
+        self.legacy.write_text(
+            json.dumps({"hosts": [{"host": "later"}]}), encoding="utf-8"
+        )
         self.assertEqual(store.load().hosts, ())
 
-    def test_sort_mode_and_remove_are_persisted(self) -> None:
+    def test_legacy_sort_mode_is_accepted_without_losing_records(self) -> None:
         store = StateStore(self.path, self.legacy)
         store.record_success("Alpha", now_ms=100)
         store.record_success("Bravo", now_ms=200)
-        state = store.set_sort_mode(SORT_RECENCY)
-        self.assertEqual(state.sort_mode, SORT_RECENCY)
-        self.assertEqual(store.load().sort_mode, SORT_RECENCY)
+        payload = json.loads(self.path.read_text(encoding="utf-8"))
+        payload["sortMode"] = "frequency"
+        store.path.write_text(json.dumps(payload), encoding="utf-8")
+        before = store.path.read_bytes()
+        state = store.load()
+        self.assertEqual(store.path.read_bytes(), before)
+        self.assertEqual(
+            [(host.host, host.last_connected, host.count) for host in state.hosts],
+            [("bravo", 200, 1), ("alpha", 100, 1)],
+        )
+        persisted = json.loads(store.path.read_text(encoding="utf-8"))
+        self.assertEqual(persisted["sortMode"], "frequency")
         removed, state = store.remove("ALPHA")
         self.assertTrue(removed)
         self.assertEqual([h.host for h in state.hosts], ["bravo"])
+        persisted = json.loads(store.path.read_text(encoding="utf-8"))
+        self.assertEqual(persisted["sortMode"], SORT_RECENCY)
         removed, _ = store.remove("not-there")
         self.assertFalse(removed)
 
@@ -83,18 +96,23 @@ class StateStoreTests(unittest.TestCase):
         self.assertEqual(state.hosts[0].last_connected, 200)
         self.assertEqual(state.hosts[0].count, 2)
 
-    def test_directional_sort_cycle_wraps_and_persists(self) -> None:
+    def test_missing_and_invalid_sort_modes_are_read_as_recent_without_writes(
+        self,
+    ) -> None:
         store = StateStore(self.path, self.legacy)
-        self.assertEqual(SORT_RECENCY, store.cycle_sort_mode(1).sort_mode)
-        self.assertEqual(SORT_FREQUENCY, store.cycle_sort_mode(1).sort_mode)
-        self.assertEqual(SORT_RECENCY, store.cycle_sort_mode(-1).sort_mode)
-        self.assertEqual(SORT_FREQUENCY, store.cycle_sort_mode(-1).sort_mode)
-        self.assertEqual(SORT_FREQUENCY, store.load().sort_mode)
-
-        for direction in (0, 2, -2):
-            with self.subTest(direction=direction):
-                with self.assertRaises(ValueError):
-                    store.cycle_sort_mode(direction)
+        for value in (None, "not-a-mode"):
+            payload = {
+                "version": 1,
+                "hosts": [{"host": "alpha", "lastConnected": 100, "count": 7}],
+            }
+            if value is not None:
+                payload["sortMode"] = value
+            store.path.parent.mkdir(parents=True, exist_ok=True)
+            store.path.write_text(json.dumps(payload), encoding="utf-8")
+            before = store.path.read_bytes()
+            state = store.load()
+            self.assertEqual(state.hosts, (HostRecord("alpha", 100, 7),))
+            self.assertEqual(store.path.read_bytes(), before)
 
     def test_concurrent_record_mutations_do_not_lose_updates(self) -> None:
         store = StateStore(self.path, self.legacy)
@@ -111,7 +129,10 @@ class StateStoreTests(unittest.TestCase):
 
     def test_unknown_generic_schema_is_not_imported_over(self) -> None:
         self.path.parent.mkdir(parents=True)
-        self.path.write_text(json.dumps({"version": 99, "hosts": [{"host": "generic"}]}), encoding="utf-8")
+        self.path.write_text(
+            json.dumps({"version": 99, "hosts": [{"host": "generic"}]}),
+            encoding="utf-8",
+        )
         self.write_legacy({"hosts": [{"host": "legacy"}]})
         state = StateStore(self.path, self.legacy).load()
         self.assertEqual(state.hosts, ())

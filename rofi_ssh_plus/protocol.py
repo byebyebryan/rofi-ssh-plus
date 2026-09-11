@@ -9,8 +9,6 @@ from dataclasses import dataclass
 from .launch import spawn_managed_worker, spawn_worker
 from .mesh import MeshConfig
 from .model import (
-    SORT_FREQUENCY,
-    SORT_RECENCY,
     HostRecord,
     InvalidDestination,
     normalize_destination,
@@ -23,10 +21,6 @@ ROFI_RETV_CUSTOM_2 = 11
 ROFI_RETV_CUSTOM_3 = 12
 ROFI_RECORD_SEPARATOR = "\t"
 ROFI_DELIMITER_VALUE = r"\t"
-SORT_MODE_LABELS = {
-    SORT_FREQUENCY: "Frequent",
-    SORT_RECENCY: "Recent",
-}
 
 
 def _option(key: str, value: str) -> str:
@@ -69,20 +63,18 @@ class Picker:
         state = self.store.load()
         headers = [
             _option("use-hot-keys", "true"),
-            _option(
-                "prompt", f"SSH › {SORT_MODE_LABELS.get(state.sort_mode, 'Frequent')}"
-            ),
+            _option("prompt", "SSH"),
         ]
         if keep_filter:
             # Preserve the query while allowing Rofi to reset selection to
             # the first eligible row.  Do not emit keep-selection here.
             headers.append(_option("keep-filter", "true"))
         rendered_rows: list[str] = []
-        ordered = self._sort_rows(self._rows(state.hosts), state.sort_mode)
+        ordered = self._sort_rows(self._rows(state.hosts))
         if ordered:
             for row in ordered:
                 record = HostRecord(row.key, row.last_connected, row.count)
-                shown = display_record(record, state.sort_mode, self.now_ms)
+                shown = display_record(record, now_ms=self.now_ms)
                 if row.display != row.key:
                     details = shown.split("\n", 1)[1]
                     shown = f"{row.display}\n{details}"
@@ -188,30 +180,26 @@ class Picker:
         return rows
 
     @staticmethod
-    def _sort_rows(rows: Sequence[_Row], sort_mode: str) -> list[_Row]:
-        if sort_mode == SORT_RECENCY:
-            return sorted(
-                rows,
-                key=lambda row: (
-                    0 if row.last_connected else 1,
+    def _sort_rows(rows: Sequence[_Row]) -> list[_Row]:
+        def key(row: Picker._Row) -> tuple[object, ...]:
+            if row.last_connected:
+                # Recency is the only primary ordering.  Declaration order is
+                # a stable tie-break for managed hosts; display/key completes
+                # the deterministic order for ad-hoc destinations.
+                return (
+                    0,
                     -row.last_connected,
-                    -row.count,
-                    row.declaration_index
-                    if row.managed and not row.last_connected
-                    else 0,
+                    row.declaration_index if row.managed else len(rows),
                     row.display.casefold(),
                     row.key,
-                ),
-            )
-        return sorted(
-            rows,
-            key=lambda row: (
-                -row.count,
-                -row.last_connected,
-                row.display.casefold(),
-                row.key,
-            ),
-        )
+                )
+            # Never-used managed hosts retain Host Mesh declaration order and
+            # remain after every used destination.
+            if row.managed:
+                return (1, 0, row.declaration_index, row.display.casefold(), row.key)
+            return (1, 1, 0, row.display.casefold(), row.key)
+
+        return sorted(rows, key=key)
 
     def dispatch(
         self, retv: int, argv: Sequence[str], env: Mapping[str, str] | None = None
@@ -220,12 +208,9 @@ class Picker:
 
         environ = os.environ if env is None else env
         if retv in (ROFI_RETV_CUSTOM_1, ROFI_RETV_CUSTOM_2, ROFI_RETV_CUSTOM_3):
-            if retv == ROFI_RETV_CUSTOM_1:
-                self.store.toggle_sort_mode()
-            elif retv == ROFI_RETV_CUSTOM_2:
-                self.store.cycle_sort_mode(1)
-            else:
-                self.store.cycle_sort_mode(-1)
+            # P8 windows may still emit the retired lens callbacks.  Treat all
+            # three as harmless recent-only rerenders: no state mutation, no
+            # callback-owned key semantics, and the active filter survives.
             return self.render(initial=False, keep_filter=True)
 
         value = self._callback_value(retv, argv, environ)
