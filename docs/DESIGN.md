@@ -9,11 +9,10 @@ published and deployed, with operator acceptance complete on Snap and
 Starship; Carbon is in a daily-drive soak. The P9 producer implementation and
 canonical bundle are published in this repository; managed suite deployment is
 coordinated through chezmoi while the Host Mesh v1 wire behavior stays
-compatible. A subsequent post-P9 recent-only SSH refinement supersedes the
+compatible. The published post-P9 recent-only SSH refinement supersedes the
 original P8 Frequent/Recent lens, restores native Left/Right filter editing,
-and leaves the P9 wire contract unchanged. This refinement is an uncommitted
-candidate in the current checkout; it still needs publication, deployment,
-and fleet/operator acceptance.
+and leaves the P9 wire contract unchanged. Managed deployment and
+fleet/operator acceptance are still pending.
 
 ## P8 navigation and post-P9 SSH refinement
 

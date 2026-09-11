@@ -7,10 +7,10 @@ provides the Host Mesh Contract v1 process boundary for logical hosts, route
 candidates, and route health shared by the other suite pickers.
 
 The current source implements the Host Mesh contract and the published,
-deployed P8 flat-scope navigation. A post-P9 recent-only SSH refinement is
-being reviewed in this checkout; it supersedes the original P8 Frequent/Recent
-lens without changing the Host Mesh wire contract and is not yet published or
-deployed. Its canonical P9 contract bundle is under
+deployed P8 flat-scope navigation. The published post-P9 recent-only SSH
+refinement supersedes the original P8 Frequent/Recent lens without changing the
+Host Mesh wire contract; managed deployment and fleet acceptance are still
+pending. Its canonical P9 contract bundle is under
 `contracts/host-mesh-v1/`. Consumers invoke
 `rofi-ssh-plus mesh ... --json` through
 `PATH`; they do not import this package or read its private state.
