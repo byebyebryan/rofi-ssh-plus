@@ -225,8 +225,7 @@ class Picker:
 
     @classmethod
     def _message(cls, action: str, notice: str = "") -> str:
-        next_action = ACTION_FORGET if action == ACTION_CONNECT else ACTION_CONNECT
-        hint = f"Enter: {cls._action_label(action)} · Tab: {cls._action_label(next_action)}"
+        hint = f"Enter: {cls._action_label(action)} · Tab: Cycle actions"
         return f"{hint} · {notice}" if notice else hint
 
     @dataclass(frozen=True)

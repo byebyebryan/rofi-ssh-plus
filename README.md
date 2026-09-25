@@ -99,7 +99,7 @@ when checks fail, so a password prompt or visible SSH error remains possible.
 | --- | --- |
 | Up/Down, Ctrl-P/Ctrl-N | Navigate rows using Rofi defaults |
 | Left/Right | Move the filter cursor using Rofi defaults |
-| Tab | Select Forget recent history |
+| Tab | Cycle to the next action |
 | Shift+Tab | Select the previous action |
 | Enter | Run the displayed action on the selected listed host |
 | Escape, Ctrl+G | Close the picker |
