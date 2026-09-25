@@ -104,8 +104,8 @@ when checks fail, so a password prompt or visible SSH error remains possible.
 | Enter | Run the displayed action on the selected listed host |
 | Escape, Ctrl+G | Close the picker |
 
-The message line lists both actions and highlights the one Enter will run;
-Tab cycles the selection without running either action.
+The message shows `Enter:` with both actions and highlights the one Enter will
+run. A second line shows `Tab: Cycle actions`; Tab never runs an action.
 
 The selected row keeps a typed stable host identity in Rofi's `info` field and
 its canonical host in `meta` for normal filtering; visible decoration never
