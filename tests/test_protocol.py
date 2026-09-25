@@ -57,7 +57,8 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn("\x00use-hot-keys\x1ftrue", output)
         self.assertIn("\x00no-custom\x1ftrue", output)
         self.assertIn("\x00prompt\x1fSSH\n", output)
-        self.assertIn("\x00message\x1fEnter: Connect · Tab: Cycle actions", output)
+        self.assertIn('Actions: <span foreground="#42a5f5" weight="bold">[Connect]</span> · Forget recent history', output)
+        self.assertIn("Tab: Cycle · Enter: Run", output)
         self.assertNotIn("Shift+Tab:", output)
         self.assertIn(f'\x00data\x1f{self.action_data(ACTION_CONNECT)}', output)
         self.assertNotIn("Frequent", output)
@@ -75,6 +76,11 @@ class ProtocolTests(unittest.TestCase):
         delimiter = f"\x00delim\x1f{ROFI_DELIMITER_VALUE}\n"
         _, records = output.split(delimiter, 1)
         self.assertEqual(2, len(records.removesuffix("\t").split("\t")))
+
+    def test_action_notice_is_escaped_for_rofi_message_markup(self) -> None:
+        message = self.picker._message(ACTION_CONNECT, "host <alpha> & beta")
+        self.assertIn("host &lt;alpha&gt; &amp; beta", message)
+        self.assertNotIn("host <alpha>", message)
 
     def test_selected_uses_typed_rofi_info_and_custom_input_cannot_connect(self) -> None:
         self.assertEqual(
@@ -127,7 +133,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertNotIn("\talpha\x00display", output)
         self.assertIn("beta\n", output)
         self.assertIn("\x00prompt\x1fSSH\t", output)
-        self.assertIn("Enter: Connect · Tab: Cycle actions · Forgot recent history for alpha", output)
+        self.assertIn("[Connect]</span> · Forget recent history  |  Tab: Cycle · Enter: Run  |  Forgot recent history for alpha", output)
         self.assertNotIn("\x00new-selection\x1f", output)
         self.assertEqual([h.host for h in self.store.load().hosts], ["beta"])
 
@@ -142,7 +148,7 @@ class ProtocolTests(unittest.TestCase):
             },
         )
         self.assertIn("\x00prompt\x1fSSH\t", output)
-        self.assertIn("\x00message\x1fEnter: Forget recent history · Tab: Cycle actions", output)
+        self.assertIn('Connect · <span foreground="#ffb74d" weight="bold">[Forget recent history]</span>', output)
         self.assertIn(f'\x00data\x1f{self.action_data(ACTION_FORGET)}', output)
         self.assertIn("\x00keep-filter\x1ftrue", output)
         self.assertIn("\x00keep-selection\x1ftrue", output)
@@ -155,7 +161,7 @@ class ProtocolTests(unittest.TestCase):
             {"ROFI_DATA": self.action_data(ACTION_FORGET)},
         )
         self.assertIn("\x00prompt\x1fSSH\t", output)
-        self.assertIn("\x00message\x1fEnter: Connect · Tab: Cycle actions", output)
+        self.assertIn('Actions: <span foreground="#42a5f5" weight="bold">[Connect]</span>', output)
         self.assertIn(f'\x00data\x1f{self.action_data(ACTION_CONNECT)}', output)
         self.assertEqual(self.store.path.read_bytes(), before)
 

@@ -6,6 +6,7 @@ import json
 import os
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from html import escape
 
 from .launch import spawn_managed_worker, spawn_worker
 from .mesh import MeshConfig
@@ -225,8 +226,15 @@ class Picker:
 
     @classmethod
     def _message(cls, action: str, notice: str = "") -> str:
-        hint = f"Enter: {cls._action_label(action)} · Tab: Cycle actions"
-        return f"{hint} · {notice}" if notice else hint
+        labels = []
+        for candidate in ACTION_ORDER:
+            label = escape(cls._action_label(candidate), quote=False)
+            if candidate == action:
+                color = "#ffb74d" if candidate == ACTION_FORGET else "#42a5f5"
+                label = f'<span foreground="{color}" weight="bold">[{label}]</span>'
+            labels.append(label)
+        hint = f"Actions: {' · '.join(labels)}  |  Tab: Cycle · Enter: Run"
+        return f"{hint}  |  {escape(notice, quote=False)}" if notice else hint
 
     @dataclass(frozen=True)
     class _Row:
