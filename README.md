@@ -107,6 +107,8 @@ when checks fail, so a password prompt or visible SSH error remains possible.
 The message shows `Enter:` with both actions and highlights the one Enter will
 run. A divider separates `Tab: Cycle actions` on the same line; Tab never runs
 an action. Notices follow after a blank line.
+Host identity and search metadata precede the multiline display option in each
+Rofi row, so Enter receives the typed host identity on a one-row list.
 
 The selected row keeps a typed stable host identity in Rofi's `info` field and
 its canonical host in `meta` for normal filtering; visible decoration never

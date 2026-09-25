@@ -74,7 +74,11 @@ class ProtocolTests(unittest.TestCase):
 
         delimiter = f"\x00delim\x1f{ROFI_DELIMITER_VALUE}\n"
         _, records = output.split(delimiter, 1)
-        self.assertEqual(2, len(records.removesuffix("\t").split("\t")))
+        rows = records.removesuffix("\t").split("\t")
+        self.assertEqual(2, len(rows))
+        for row in rows:
+            self.assertLess(row.index("\x00info\x1f"), row.index("\x00display\x1f"))
+            self.assertLess(row.index("\x00meta\x1f"), row.index("\x00display\x1f"))
 
     def test_action_notice_is_escaped_for_rofi_message_markup(self) -> None:
         message = self.picker._message(ACTION_CONNECT, "host <alpha> & beta\u2028next")

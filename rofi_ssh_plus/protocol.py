@@ -52,14 +52,16 @@ def _row(
     nonselectable: bool = False,
 ) -> str:
     parts = [text]
-    if display is not None:
-        parts.append(_option("display", display))
+    # Rofi can omit later row options when a multiline display comes first.
+    # Keep identity and selection metadata ahead of display.
     if info is not None:
         parts.append(_option("info", info))
     if meta is not None:
         parts.append(_option("meta", meta))
     if nonselectable:
         parts.append(_option("nonselectable", "true"))
+    if display is not None:
+        parts.append(_option("display", display))
     return "".join(parts)
 
 
