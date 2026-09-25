@@ -6,11 +6,11 @@ actually answered an SSH reachability check. It does not enumerate
 provides the Host Mesh Contract v1 process boundary for logical hosts, route
 candidates, and route health shared by the other suite pickers.
 
-The current source implements the Host Mesh contract and the published,
-deployed P8 flat-scope navigation. The published post-P9 recent-only SSH
-refinement supersedes the original P8 Frequent/Recent lens without changing the
-Host Mesh wire contract. Managed deployment and fleet acceptance are tracked by
-the chezmoi repository. Its canonical P9 contract bundle is under
+The current source implements the Host Mesh contract, the published P8
+flat-scope navigation, and the SSH action cycle. The published post-P9
+recent-only SSH refinement supersedes the original P8 Frequent/Recent lens
+without changing the Host Mesh wire contract. Managed deployment and fleet
+acceptance are tracked by the chezmoi repository. Its canonical P9 contract bundle is under
 `contracts/host-mesh-v1/`. Consumers invoke
 `rofi-ssh-plus mesh ... --json` through
 `PATH`; they do not import this package or read its private state.
@@ -46,9 +46,18 @@ A direct invocation is:
 ```sh
 rofi -show ssh-plus \
   -modes "ssh-plus:/absolute/path/to/rofi-ssh-plus/bin/rofi-ssh-plus" \
-  -theme-str 'entry { placeholder: "Filter or type host · Enter connect · Ctrl+Enter new"; }' \
+  -theme-str 'entry { placeholder: "Filter hosts · Enter connect · Tab actions · Esc close"; }' \
   -kb-cancel Escape,Control+g \
-  -kb-accept-custom Control+Return \
+  -kb-element-next "" \
+  -kb-element-prev "" \
+  -kb-custom-7 Tab \
+  -kb-custom-8 ISO_Left_Tab \
+  -kb-custom-1 "" \
+  -kb-custom-2 "" \
+  -kb-custom-3 "" \
+  -kb-custom-4 "" \
+  -kb-accept-custom "" \
+  -kb-delete-entry "" \
   -eh 2
 ```
 
@@ -59,9 +68,18 @@ Create an absolute symlink to the checkout under the `ssh-plus` name in
 ln -s /absolute/path/to/rofi-ssh-plus/bin/rofi-ssh-plus \
   ~/.config/rofi/scripts/ssh-plus
 rofi -show ssh-plus \
-  -theme-str 'entry { placeholder: "Filter or type host · Enter connect · Ctrl+Enter new"; }' \
+  -theme-str 'entry { placeholder: "Filter hosts · Enter connect · Tab actions · Esc close"; }' \
   -kb-cancel Escape,Control+g \
-  -kb-accept-custom Control+Return \
+  -kb-element-next "" \
+  -kb-element-prev "" \
+  -kb-custom-7 Tab \
+  -kb-custom-8 ISO_Left_Tab \
+  -kb-custom-1 "" \
+  -kb-custom-2 "" \
+  -kb-custom-3 "" \
+  -kb-custom-4 "" \
+  -kb-accept-custom "" \
+  -kb-delete-entry "" \
   -eh 2
 ```
 
@@ -69,11 +87,9 @@ The picker opens with configured logical hosts and recorded ad-hoc destinations
 ordered strictly by most recent successful connection. Used destinations sort
 by descending `lastConnected`; equal timestamps use deterministic host mesh
 declaration/name tie-breakers and never use connection count. Never-used managed
-hosts follow in Host Mesh declaration order. The prompt is simply `SSH`.
-Connection count remains secondary metadata after relative age. Type a new
-destination and press Ctrl+Enter to launch it; plain Enter selects the
-highlighted row. An ad-hoc destination is added only after the detached worker
-confirms that a server answered. A managed row tries its ordered routes and
+hosts follow in Host Mesh declaration order. Connection count remains secondary
+metadata after relative age. Plain Enter connects the highlighted listed host;
+typed text only filters the list. A managed row tries its ordered routes and
 records one logical-host usage after a route answers. The terminal opens even
 when checks fail, so a password prompt or visible SSH error remains possible.
 
@@ -81,24 +97,23 @@ when checks fail, so a password prompt or visible SSH error remains possible.
 
 | Key/action | Behavior |
 | --- | --- |
-| Up/Down, Ctrl-P/Ctrl-N, Tab/Shift+Tab | Navigate rows using Rofi defaults |
+| Up/Down, Ctrl-P/Ctrl-N | Navigate rows using Rofi defaults |
 | Left/Right | Move the filter cursor using Rofi defaults |
-| Enter | Connect to the selected recorded host |
-| Typed input + Ctrl+Enter | Probe and connect to a new destination |
-| Shift+Delete | Remove the selected destination from history |
+| Tab | Select Forget recent history |
+| Shift+Tab | Select the previous action |
+| Enter | Run the displayed action on the selected listed host |
 | Escape, Ctrl+G | Close the picker |
 
-The selected row keeps its raw destination in Rofi's `info` and `meta` fields;
-visible decoration never drives selection. Each row reserves two physical
-lines: the destination is primary and the secondary line contains relative age
-followed by connection count. SSH has no peer view, so Left/Right and
-Ctrl+B/Ctrl+F retain Rofi's native filter-cursor behavior. Already-open P8
-windows may still send callbacks 10, 11, or 12; they perform a recent-only
-rerender without rewriting history merely to normalize `sortMode`, with
-`keep-filter=true` preserving the query while resetting selection to the first
-eligible row. Escape and Ctrl+G are explicitly
-configured as native cancellation keys; Tab and Shift+Tab retain Rofi's normal
-row navigation.
+The selected row keeps a typed stable host identity in Rofi's `info` field and
+its canonical host in `meta` for normal filtering; visible decoration never
+drives selection. Each row reserves two physical lines: the destination is
+primary and the secondary line contains relative age followed by connection
+count. The active action name is carried in versioned `ROFI_DATA`; action
+callbacks preserve both the filter and highlighted row. `ROFI_RETV=2` and
+`ROFI_RETV=3` are visible no-ops, and callbacks 10, 11, and 12 from older
+windows are harmless notices. Escape and Ctrl+G are native cancellation keys.
+SSH has no peer view, so Left/Right and Ctrl+B/Ctrl+F retain Rofi's native
+filter-cursor behavior.
 
 A hostname is compared case-insensitively and stored in its canonical lower-case
 form. Connection counts are retained for metadata and migration but never

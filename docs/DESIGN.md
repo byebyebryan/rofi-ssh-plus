@@ -31,17 +31,21 @@ Host Mesh declaration/name tie-breakers, while never-used managed hosts remain
 in declaration order after all used rows. Left and Right therefore retain
 Rofi's native filter-cursor actions instead of switching a meaningless view.
 
-Tab and Shift+Tab remain Rofi-native row navigation; Enter connects to the
-selected host; and Escape plus Ctrl+G remain entirely on Rofi's native cancel
-path. Neither cancellation key is a script callback. Already-open P8 windows
-may still send callbacks 10, 11, or 12; these render the same recent-only rows,
-preserve the filter, and do not rewrite history merely to normalize
-`sortMode`, probe routes, launch a terminal, or capture cancellation.
+Tab selects `Forget recent history` and Shift+Tab selects the previous action;
+Enter runs the displayed action on the row highlighted when Enter is pressed.
+The action is a stable name in versioned `ROFI_DATA`, and action callbacks
+preserve the filter and highlighted row. Escape plus Ctrl+G remain entirely on
+Rofi's native cancel path. Neither cancellation key is a script callback.
+Already-open P8 windows may still send callbacks 10, 11, or 12; these render a
+harmless notice, preserve the filter and selection, and do not rewrite history
+merely to normalize `sortMode`, probe routes, launch a terminal, or capture
+cancellation.
 
-The original P8 cutover did not change successful-connection history, custom
-input, route selection, or Host Mesh v1. P9 itself did not change picker
-behavior; this subsequent refinement changes only SSH presentation/state
-ordering and leaves the P9 wire contracts unchanged.
+The action cycle removes custom destination submission and direct history
+deletion from the managed picker surface. The current action implementation
+does not change route selection or Host Mesh v1. P9 itself did not change
+picker behavior; this subsequent refinement changes SSH presentation/state
+ordering and action dispatch while leaving the P9 wire contracts unchanged.
 
 ## P9 locked CLI contracts
 
@@ -91,8 +95,9 @@ The mesh-aware picker has one recent-only ordering. It retains the v1
 invalid, or legacy `frequency` value as `recency` without rewriting state until
 the next real mutation. History is never reset.
 Configured remote hosts are always visible as one logical row, while unmatched
-successful custom destinations remain ad-hoc. Selecting a managed row chooses
-among its routes; clearing its history never edits declarative configuration.
+historical destinations remain ad-hoc. The picker accepts listed rows only.
+Selecting a managed row chooses among its routes; clearing its history never
+edits declarative configuration.
 The full ranking, connection, deletion, and migration semantics are normative
 in Host Mesh Contract v1.
 
@@ -105,11 +110,11 @@ coupling without improving a history of at most 100 records.
 ```text
 Rofi callback
     |
-    +-- render history (ROFI_RETV=0, 3, 10, 11, or 12)
+    +-- render history (ROFI_RETV=0, 2, 3, 10, 11, 12, 16, or 17)
     |
-    +-- selected/custom destination
+    +-- selected listed host (Connect or Forget)
           |
-          +-- detached Python worker
+          +-- Connect: detached Python worker
                  |
                  +-- ad-hoc / one route: terminal, then probe and record
                  +-- multiple routes: probe, choose, record, then terminal
@@ -142,40 +147,48 @@ not treated as a route failure.
 The executable handles Rofi's script callbacks:
 
 - `ROFI_RETV=0`: render recorded rows.
-- `ROFI_RETV=1`: use `ROFI_INFO` as the selected row's raw host, with the
-  callback argument as a fallback; start a worker and return no rows.
-- `ROFI_RETV=2`: use the callback argument as custom input, falling back to
-  `ROFI_INPUT` for builds that expose it; this is the Ctrl+Enter
-  (`kb-accept-custom`) path and starts a worker before returning no rows.
-- `ROFI_RETV=3`: remove the selected `ROFI_INFO` host and render again.
+- `ROFI_RETV=1`: parse the typed `ROFI_INFO` row identity and run the current
+  action. Connect starts a worker; Forget removes only that canonical history
+  record and returns to Connect.
+- `ROFI_RETV=2` and `3`: retired custom-input and direct-delete callbacks.
+  Render a visible no-op notice without launching or mutating history.
 - `ROFI_RETV=10`, `11`, or `12`: compatibility callbacks from already-open P8
-  windows. Render the recent-only rows again without rewriting legacy
-  `sortMode`, probing routes, launching a terminal, or applying callback-owned
-  key semantics.
+  windows. Render a visible no-op notice without rewriting legacy `sortMode`,
+  probing routes, launching a terminal, or applying callback-owned key
+  semantics.
+- `ROFI_RETV=16`: advance the action cycle from Connect to Forget, or from
+  Forget to Connect.
+- `ROFI_RETV=17`: reverse the same action cycle. Both callbacks preserve the
+  active filter and exact highlighted identity and do not mutate state.
 
-Compatibility callbacks 10, 11, and 12 render the current state without
-discovery, route probing, terminal launch, or history mutation merely to
-normalize the retired sort field. Their output
-includes `keep-filter=true`, so Rofi preserves the active query, while omitting
-`keep-selection` so Rofi selects the first eligible matching row. Callback
-output continues to use the tab delimiter remembered from the initial render.
+Every continuation carries `data={"version":1,"action":"connect"}` or the
+corresponding stable action name. Unknown or malformed action data blocks
+Enter and shows a visible error rather than selecting a fallback action. Action
+cycle and compatibility callbacks include `keep-filter=true` and
+`keep-selection=true`. When typed `ROFI_INFO` still identifies a row after a
+fresh recency sort, callbacks also emit `new-selection=<index>` for that row;
+otherwise Rofi uses its safe first-row fallback. Callback output continues to
+use the tab delimiter remembered from the initial render.
 
-Rows put the raw host before the NUL option separator and also provide it as
-both `info` and `meta`; selection therefore never depends on visible text.
+Rows put the display label before the NUL option separator and provide a typed
+`{"version":1,"kind":"host","id":"..."}` identity in `info`. The
+canonical host remains in `meta` for normal Rofi filtering; selection therefore
+never depends on visible text or custom input.
 Their `display` value contains two physical lines: the host, followed by
 connection count and compact relative age, always age-first. The output
 declares a tab record delimiter so the display newline remains inside one row.
 The delimiter is declared using the default newline only on the initial render;
-callback headers and rows use the remembered tab delimiter. The prompt is
-simply `SSH`.
+callback headers and rows use the remembered tab delimiter. The prompt names
+the active action, and the message carries the persistent Enter/Tab hint.
 
 The initial and every re-rendered output contains `use-hot-keys=true`, which is
-required for Rofi to emit custom-key callbacks. Plain Enter activates the
-highlighted row; Ctrl+Enter is the reliable custom-input action. SSH leaves
-Left/Right and Ctrl+B/Ctrl+F as Rofi-native filter-cursor actions because it
-has no peer view. Rofi's default Tab and Shift+Tab row navigation remains
-available. Escape and Ctrl+G are explicitly configured as cancellation keys;
-there is no layered navigation or Escape-back behavior.
+required for Rofi to emit custom-key callbacks, and `no-custom=true` disables
+freeform submissions. Plain Enter activates the highlighted listed row. Typed
+text only filters rows; it cannot become a new destination. SSH leaves
+Left/Right and Ctrl+B/Ctrl+F as Rofi-native
+filter-cursor actions because it has no peer view. Escape and Ctrl+G are
+explicitly configured as cancellation keys; there is no layered navigation or
+Escape-back behavior.
 
 The state model is independent of protocol rendering, and subprocess argv
 construction is independent of both. This keeps state/ranking, probe

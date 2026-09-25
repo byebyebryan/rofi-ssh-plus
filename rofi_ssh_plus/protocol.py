@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -19,8 +20,22 @@ from .state import StateStore
 ROFI_RETV_CUSTOM_1 = 10
 ROFI_RETV_CUSTOM_2 = 11
 ROFI_RETV_CUSTOM_3 = 12
+ROFI_RETV_CUSTOM_7 = 16
+ROFI_RETV_CUSTOM_8 = 17
 ROFI_RECORD_SEPARATOR = "\t"
 ROFI_DELIMITER_VALUE = r"\t"
+
+ACTION_CONNECT = "connect"
+ACTION_FORGET = "forget"
+ACTION_ORDER = (ACTION_CONNECT, ACTION_FORGET)
+ACTION_DATA_VERSION = 1
+ROW_INFO_VERSION = 1
+
+_INVALID_STATE = object()
+
+
+def _valid_version(value: object, expected: int) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value == expected
 
 
 def _option(key: str, value: str) -> str:
@@ -47,6 +62,72 @@ def _row(
     return "".join(parts)
 
 
+def _action_data(action: str) -> str:
+    """Serialize one stable action name for Rofi's continuation channel."""
+
+    if action not in ACTION_ORDER:
+        raise ValueError("unknown SSH picker action")
+    return json.dumps(
+        {"version": ACTION_DATA_VERSION, "action": action},
+        ensure_ascii=True,
+        separators=(",", ":"),
+    )
+
+
+def _parse_action_data(value: object) -> str | object:
+    """Parse untrusted ``ROFI_DATA`` without choosing a fallback action."""
+
+    if not isinstance(value, str) or not value:
+        return _INVALID_STATE
+    try:
+        payload = json.loads(value)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return _INVALID_STATE
+    if not isinstance(payload, dict):
+        return _INVALID_STATE
+    if set(payload) != {"version", "action"}:
+        return _INVALID_STATE
+    if not _valid_version(payload["version"], ACTION_DATA_VERSION):
+        return _INVALID_STATE
+    action = payload.get("action")
+    if not isinstance(action, str) or action not in ACTION_ORDER:
+        return _INVALID_STATE
+    return action
+
+
+def _row_info(row_key: str) -> str:
+    """Serialize a typed row identity for ``ROFI_INFO``."""
+
+    return json.dumps(
+        {"version": ROW_INFO_VERSION, "kind": "host", "id": row_key},
+        ensure_ascii=True,
+        separators=(",", ":"),
+    )
+
+
+def _parse_row_info(value: object) -> str | object:
+    """Parse the canonical host identity carried by a selected row."""
+
+    if not isinstance(value, str) or not value:
+        return _INVALID_STATE
+    try:
+        payload = json.loads(value)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return _INVALID_STATE
+    if not isinstance(payload, dict):
+        return _INVALID_STATE
+    if set(payload) != {"version", "kind", "id"}:
+        return _INVALID_STATE
+    if not _valid_version(payload["version"], ROW_INFO_VERSION):
+        return _INVALID_STATE
+    if payload.get("kind") != "host":
+        return _INVALID_STATE
+    try:
+        return normalize_destination(payload.get("id"))
+    except (InvalidDestination, TypeError):
+        return _INVALID_STATE
+
+
 @dataclass
 class Picker:
     store: StateStore
@@ -59,18 +140,37 @@ class Picker:
         if self.mesh is not None and self.store.mesh is None:
             self.store.mesh = self.mesh
 
-    def render(self, *, initial: bool = True, keep_filter: bool = False) -> str:
+    def render(
+        self,
+        *,
+        initial: bool = True,
+        keep_filter: bool = False,
+        keep_selection: bool = False,
+        selected_identity: str | None = None,
+        action: str = ACTION_CONNECT,
+        notice: str = "",
+    ) -> str:
+        if action not in ACTION_ORDER:
+            action = ACTION_CONNECT
         state = self.store.load()
         headers = [
             _option("use-hot-keys", "true"),
-            _option("prompt", "SSH"),
+            _option("no-custom", "true"),
+            _option("prompt", self._prompt(action)),
+            _option("message", self._message(action, notice)),
+            _option("data", _action_data(action)),
         ]
         if keep_filter:
-            # Preserve the query while allowing Rofi to reset selection to
-            # the first eligible row.  Do not emit keep-selection here.
             headers.append(_option("keep-filter", "true"))
+        if keep_selection:
+            headers.append(_option("keep-selection", "true"))
         rendered_rows: list[str] = []
         ordered = self._sort_rows(self._rows(state.hosts))
+        if keep_selection and selected_identity is not None:
+            for index, row in enumerate(ordered):
+                if row.key == selected_identity:
+                    headers.append(_option("new-selection", str(index)))
+                    break
         if ordered:
             for row in ordered:
                 record = HostRecord(row.key, row.last_connected, row.count)
@@ -79,14 +179,19 @@ class Picker:
                     details = shown.split("\n", 1)[1]
                     shown = f"{row.display}\n{details}"
                 rendered_rows.append(
-                    _row(row.display, display=shown, info=row.key, meta=row.key)
+                    _row(
+                        row.display,
+                        display=shown,
+                        info=_row_info(row.key),
+                        meta=row.key,
+                    )
                 )
         else:
             rendered_rows.append(
                 _row(
                     "No verified SSH hosts yet",
-                    display="No verified SSH hosts yet — type a host and press Ctrl+Enter",
-                    meta="type a host",
+                    display="No listed SSH hosts yet",
+                    meta="no listed hosts",
                     nonselectable=True,
                 )
             )
@@ -106,6 +211,26 @@ class Picker:
             ROFI_RECORD_SEPARATOR.join([*headers, *rendered_rows])
             + ROFI_RECORD_SEPARATOR
         )
+
+    @staticmethod
+    def _prompt(action: str) -> str:
+        return f"SSH · {Picker._action_label(action)}"
+
+    @staticmethod
+    def _action_label(action: str) -> str:
+        return {
+            ACTION_CONNECT: "Connect",
+            ACTION_FORGET: "Forget recent history",
+        }.get(action, "Connect")
+
+    @classmethod
+    def _message(cls, action: str, notice: str = "") -> str:
+        next_action = ACTION_FORGET if action == ACTION_CONNECT else ACTION_CONNECT
+        hint = (
+            f"Enter: {cls._action_label(action)} · "
+            f"Tab: {cls._action_label(next_action)} · Shift+Tab: reverse"
+        )
+        return f"{notice} · {hint}" if notice else hint
 
     @dataclass(frozen=True)
     class _Row:
@@ -207,54 +332,162 @@ class Picker:
         """Handle one Rofi callback and return the next script output."""
 
         environ = os.environ if env is None else env
-        if retv in (ROFI_RETV_CUSTOM_1, ROFI_RETV_CUSTOM_2, ROFI_RETV_CUSTOM_3):
-            # P8 windows may still emit the retired lens callbacks.  Treat all
-            # three as harmless recent-only rerenders: no state mutation, no
-            # callback-owned key semantics, and the active filter survives.
-            return self.render(initial=False, keep_filter=True)
+        action, action_valid = self._continuation_action(environ)
 
-        value = self._callback_value(retv, argv, environ)
+        if retv in (ROFI_RETV_CUSTOM_7, ROFI_RETV_CUSTOM_8):
+            if not action_valid:
+                return self.render(
+                    initial=False,
+                    keep_filter=True,
+                    keep_selection=True,
+                    selected_identity=self._selected_identity(environ),
+                    action=ACTION_CONNECT,
+                    notice="Invalid SSH action state; choose Connect and try again.",
+                )
+            direction = 1 if retv == ROFI_RETV_CUSTOM_7 else -1
+            next_action = self._cycle_action(action, direction)
+            return self.render(
+                initial=False,
+                keep_filter=True,
+                keep_selection=True,
+                selected_identity=self._selected_identity(environ),
+                action=next_action,
+            )
+
+        if retv in (
+            2,
+            3,
+            ROFI_RETV_CUSTOM_1,
+            ROFI_RETV_CUSTOM_2,
+            ROFI_RETV_CUSTOM_3,
+        ):
+            notice = {
+                2: "Custom destinations are disabled; select a listed host and press Enter.",
+                3: "Delete is unavailable; use Tab to choose Forget recent history.",
+            }.get(
+                retv,
+                "This SSH callback is retired; use Tab to choose an action.",
+            )
+            if not action_valid:
+                action = ACTION_CONNECT
+                notice = "Invalid SSH action state; " + notice
+            return self.render(
+                initial=False,
+                keep_filter=True,
+                keep_selection=True,
+                selected_identity=self._selected_identity(environ),
+                action=action,
+                notice=notice,
+            )
+
         if retv == 1:
-            if value:
-                self._launch_if_valid(value)
-            return ""
-        if retv == 2:
-            if value:
-                self._launch_if_valid(value)
-            return ""
-        if retv == 3:
-            if value:
+            if not action_valid:
+                return self.render(
+                    initial=False,
+                    keep_filter=True,
+                    keep_selection=True,
+                    selected_identity=self._selected_identity(environ),
+                    action=ACTION_CONNECT,
+                    notice="Invalid SSH action state; choose Connect and try again.",
+                )
+            row = self._selected_row(environ)
+            if row is None:
+                return self.render(
+                    initial=False,
+                    keep_filter=True,
+                    keep_selection=True,
+                    selected_identity=self._selected_identity(environ),
+                    action=action,
+                    notice="Select a listed SSH host first.",
+                )
+            if action == ACTION_CONNECT:
+                notice = ""
                 try:
-                    resolved = (
-                        self.mesh.resolve_token(value)
-                        if self.mesh is not None
-                        else None
-                    )
-                    self.store.remove(
-                        resolved.id
-                        if resolved is not None and not resolved.local
-                        else value
-                    )
-                except InvalidDestination:
-                    pass
-            return self.render(initial=False)
+                    launched = self._launch_row(row)
+                except (OSError, RuntimeError, ValueError) as exc:
+                    launched = False
+                    notice = f"Unable to connect to {row.key}: {exc}"
+                if launched:
+                    return ""
+                return self.render(
+                    initial=False,
+                    keep_filter=True,
+                    keep_selection=True,
+                    selected_identity=row.key,
+                    action=action,
+                    notice=notice or f"Unable to connect to {row.key}.",
+                )
+            return self._forget_row(row)
         return self.render(initial=retv == 0)
 
     @staticmethod
-    def _callback_value(retv: int, argv: Sequence[str], env: Mapping[str, str]) -> str:
-        if retv in (1, 3):
-            return env.get("ROFI_INFO", "") or (argv[0] if argv else "")
-        # Rofi 2.0 passes custom input as argv[1] in script mode.  Newer
-        # builds may additionally expose ROFI_INPUT; the argv value remains
-        # authoritative when present.
-        return (argv[0] if argv else "") or env.get("ROFI_INPUT", "")
+    def _cycle_action(action: str, direction: int) -> str:
+        index = ACTION_ORDER.index(action)
+        return ACTION_ORDER[(index + direction) % len(ACTION_ORDER)]
 
-    def _launch_if_valid(self, value: str) -> bool:
+    @staticmethod
+    def _continuation_action(env: Mapping[str, str]) -> tuple[str, bool]:
+        if "ROFI_DATA" not in env:
+            return ACTION_CONNECT, True
+        action = _parse_action_data(env.get("ROFI_DATA"))
+        if action is _INVALID_STATE:
+            return ACTION_CONNECT, False
+        assert isinstance(action, str)
+        return action, True
+
+    def _selected_row(self, env: Mapping[str, str]) -> _Row | None:
+        value = self._selected_identity(env)
+        if value is None:
+            return None
+        state = self.store.load()
+        for row in self._rows(state.hosts):
+            if row.key == value:
+                return row
+        return None
+
+    @staticmethod
+    def _selected_identity(env: Mapping[str, str]) -> str | None:
+        value = _parse_row_info(env.get("ROFI_INFO"))
+        if value is _INVALID_STATE:
+            return None
+        assert isinstance(value, str)
+        return value
+
+    def _launch_row(self, row: _Row) -> bool:
+        resolved = self.mesh.resolve_token(row.key) if self.mesh is not None else None
+        if resolved is not None:
+            if resolved.local:
+                return False
+            return bool(self.managed_worker_launcher(resolved.id))
+        return bool(self.worker_launcher(row.key))
+
+    def _forget_row(self, row: _Row) -> str:
         try:
-            host = normalize_destination(value)
-        except InvalidDestination:
-            return False
-        resolved = self.mesh.resolve_token(host) if self.mesh is not None else None
-        if resolved is not None and not resolved.local:
-            return self.managed_worker_launcher(resolved.id)
-        return self.worker_launcher(host)
+            resolved = self.mesh.resolve_token(row.key) if self.mesh is not None else None
+            target = (
+                resolved.id
+                if resolved is not None and not resolved.local
+                else row.key
+            )
+            removed, _ = self.store.remove(target)
+        except (InvalidDestination, OSError, RuntimeError, ValueError) as exc:
+            return self.render(
+                initial=False,
+                keep_filter=True,
+                keep_selection=True,
+                selected_identity=row.key,
+                action=ACTION_CONNECT,
+                notice=f"Unable to forget {row.key}: {exc}",
+            )
+        if removed:
+            notice = f"Forgot recent history for {row.key}."
+        else:
+            notice = f"No recent history for {row.key}."
+        return self.render(
+            initial=False,
+            keep_filter=True,
+            keep_selection=True,
+            selected_identity=row.key,
+            action=ACTION_CONNECT,
+            notice=notice,
+        )

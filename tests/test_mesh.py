@@ -28,7 +28,7 @@ from rofi_ssh_plus.probe import (
     run_marked_command,
     run_probe,
 )
-from rofi_ssh_plus.protocol import Picker
+from rofi_ssh_plus.protocol import ACTION_FORGET, Picker
 from rofi_ssh_plus.state import StateStore
 
 FIXTURES = Path(__file__).parents[1] / "contracts" / "host-mesh-v1" / "fixtures"
@@ -296,7 +296,7 @@ class MeshCliTests(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertEqual(duplicate["accepted"], False)
 
-    def test_mesh_dispatch_keeps_inherited_cli_and_literal_row_callbacks_distinct(
+    def test_mesh_dispatch_keeps_inherited_cli_and_invalid_row_callbacks_distinct(
         self,
     ) -> None:
         inherited = {
@@ -309,8 +309,8 @@ class MeshCliTests(unittest.TestCase):
         with patch("rofi_ssh_plus.cli.spawn_worker", return_value=True) as spawn:
             result = main(["mesh"], environ=inherited, stdout=output)
         self.assertEqual(result, 0)
-        self.assertEqual("", output.getvalue())
-        spawn.assert_called_once()
+        self.assertIn("Invalid SSH action state", output.getvalue())
+        spawn.assert_not_called()
 
         output = io.StringIO()
         result = main(
@@ -760,7 +760,18 @@ class MarkerAndMigrationTests(unittest.TestCase):
             )
             output = picker.render()
             self.assertIn("\x00display\x1fBeta\nnever · 0 connects", output)
-            self.assertEqual(picker.dispatch(1, ["Beta"], {"ROFI_INFO": "beta"}), "")
+            self.assertEqual(
+                picker.dispatch(
+                    1,
+                    ["Beta"],
+                    {
+                        "ROFI_INFO": (
+                            '{"version":1,"kind":"host","id":"beta"}'
+                        )
+                    },
+                ),
+                "",
+            )
             self.assertEqual(selected, ["beta"])
             launched: list[list[str]] = []
             calls = iter(
@@ -783,6 +794,40 @@ class MarkerAndMigrationTests(unittest.TestCase):
                 [(record.host, record.count) for record in store.load().hosts],
                 [("beta", 1)],
             )
+
+    def test_forget_managed_host_clears_usage_but_keeps_never_used_row(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            mesh = load_config(
+                FIXTURES / "config-multi-route.toml",
+                hostname=("alpha.example", "alpha"),
+            )
+            store = StateStore(root / "history.json", root / "legacy.json", mesh=mesh)
+            store.record_success("beta", now_ms=1_000)
+            picker = Picker(store, mesh=mesh, now_ms=2_000)
+            output = picker.dispatch(
+                1,
+                [],
+                {
+                    "ROFI_DATA": '{"version":1,"action":"forget"}',
+                    "ROFI_INFO": '{"version":1,"kind":"host","id":"beta"}',
+                },
+            )
+            self.assertIn("Forgot recent history for beta", output)
+            self.assertIn("\x00display\x1fBeta\nnever · 0 connects", output)
+            self.assertEqual(store.load().hosts, ())
+
+            before = store.path.read_bytes()
+            output = picker.dispatch(
+                1,
+                [],
+                {
+                    "ROFI_DATA": '{"version":1,"action":"forget"}',
+                    "ROFI_INFO": '{"version":1,"kind":"host","id":"beta"}',
+                },
+            )
+            self.assertIn("No recent history for beta", output)
+            self.assertEqual(store.path.read_bytes(), before)
 
     def test_mesh_rows_sort_by_recency_then_keep_unused_declaration_order(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

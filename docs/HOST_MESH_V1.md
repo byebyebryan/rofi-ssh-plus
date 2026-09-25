@@ -269,13 +269,13 @@ Plus's explicit-user reachability probe. The first route that answers under the
 existing interactive-history rules is used for the terminal and increments
 the logical host's usage once. If no route answers, the terminal still opens
 against the first recommended route so the user can see authentication,
-host-key, or network diagnostics, but usage is not recorded. A custom input
-that unambiguously matches a managed ID, alias, or route is folded into that
-logical host; any other successfully reached input remains ad-hoc.
+host-key, or network diagnostics, but usage is not recorded. The picker accepts
+listed rows only; existing history records from older custom-input flows remain
+ad-hoc unless their canonical identity resolves to one managed host.
 
-Shift+Delete removes an ad-hoc history row. On a managed host it clears only
-the usage counters; declarative host identity and routes remain and the row is
-still visible. The private history migration merges all unambiguous legacy
+The SSH picker's Forget action removes an ad-hoc history row. On a managed host
+it clears only the usage counters; declarative host identity and routes remain
+and the row is still visible. The private history migration merges all unambiguous legacy
 route records into their logical host by summing counts and retaining the
 newest connection time. Ambiguous or unmatched records remain ad-hoc rather
 than being discarded.
