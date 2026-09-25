@@ -56,8 +56,9 @@ class ProtocolTests(unittest.TestCase):
         output = self.picker.render()
         self.assertIn("\x00use-hot-keys\x1ftrue", output)
         self.assertIn("\x00no-custom\x1ftrue", output)
-        self.assertIn("\x00prompt\x1fSSH · Connect", output)
-        self.assertIn("\x00message\x1fEnter: Connect", output)
+        self.assertIn("\x00prompt\x1fSSH\n", output)
+        self.assertIn("\x00message\x1fEnter: Connect · Tab: Forget recent history", output)
+        self.assertNotIn("Shift+Tab:", output)
         self.assertIn(f'\x00data\x1f{self.action_data(ACTION_CONNECT)}', output)
         self.assertNotIn("Frequent", output)
         self.assertNotIn("Recent", output)
@@ -125,8 +126,8 @@ class ProtocolTests(unittest.TestCase):
         )
         self.assertNotIn("\talpha\x00display", output)
         self.assertIn("beta\n", output)
-        self.assertIn("\x00prompt\x1fSSH · Connect", output)
-        self.assertIn("Forgot recent history for alpha", output)
+        self.assertIn("\x00prompt\x1fSSH\t", output)
+        self.assertIn("Enter: Connect · Tab: Forget recent history · Forgot recent history for alpha", output)
         self.assertNotIn("\x00new-selection\x1f", output)
         self.assertEqual([h.host for h in self.store.load().hosts], ["beta"])
 
@@ -140,7 +141,8 @@ class ProtocolTests(unittest.TestCase):
                 "ROFI_INFO": self.row_info("alpha"),
             },
         )
-        self.assertIn("\x00prompt\x1fSSH · Forget recent history", output)
+        self.assertIn("\x00prompt\x1fSSH\t", output)
+        self.assertIn("\x00message\x1fEnter: Forget recent history · Tab: Connect", output)
         self.assertIn(f'\x00data\x1f{self.action_data(ACTION_FORGET)}', output)
         self.assertIn("\x00keep-filter\x1ftrue", output)
         self.assertIn("\x00keep-selection\x1ftrue", output)
@@ -152,7 +154,8 @@ class ProtocolTests(unittest.TestCase):
             [],
             {"ROFI_DATA": self.action_data(ACTION_FORGET)},
         )
-        self.assertIn("\x00prompt\x1fSSH · Connect", output)
+        self.assertIn("\x00prompt\x1fSSH\t", output)
+        self.assertIn("\x00message\x1fEnter: Connect · Tab: Forget recent history", output)
         self.assertIn(f'\x00data\x1f{self.action_data(ACTION_CONNECT)}', output)
         self.assertEqual(self.store.path.read_bytes(), before)
 

@@ -156,7 +156,7 @@ class Picker:
         headers = [
             _option("use-hot-keys", "true"),
             _option("no-custom", "true"),
-            _option("prompt", self._prompt(action)),
+            _option("prompt", self._prompt()),
             _option("message", self._message(action, notice)),
             _option("data", _action_data(action)),
         ]
@@ -213,8 +213,8 @@ class Picker:
         )
 
     @staticmethod
-    def _prompt(action: str) -> str:
-        return f"SSH · {Picker._action_label(action)}"
+    def _prompt() -> str:
+        return "SSH"
 
     @staticmethod
     def _action_label(action: str) -> str:
@@ -226,11 +226,8 @@ class Picker:
     @classmethod
     def _message(cls, action: str, notice: str = "") -> str:
         next_action = ACTION_FORGET if action == ACTION_CONNECT else ACTION_CONNECT
-        hint = (
-            f"Enter: {cls._action_label(action)} · "
-            f"Tab: {cls._action_label(next_action)} · Shift+Tab: reverse"
-        )
-        return f"{notice} · {hint}" if notice else hint
+        hint = f"Enter: {cls._action_label(action)} · Tab: {cls._action_label(next_action)}"
+        return f"{hint} · {notice}" if notice else hint
 
     @dataclass(frozen=True)
     class _Row:

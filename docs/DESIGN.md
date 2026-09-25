@@ -179,7 +179,8 @@ connection count and compact relative age, always age-first. The output
 declares a tab record delimiter so the display newline remains inside one row.
 The delimiter is declared using the default newline only on the initial render;
 callback headers and rows use the remembered tab delimiter. The prompt names
-the active action, and the message carries the persistent Enter/Tab hint.
+the picker, and the message is the single persistent place for the active
+Enter action, next Tab action, and any notice.
 
 The initial and every re-rendered output contains `use-hot-keys=true`, which is
 required for Rofi to emit custom-key callbacks, and `no-custom=true` disables
