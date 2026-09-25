@@ -105,7 +105,8 @@ when checks fail, so a password prompt or visible SSH error remains possible.
 | Escape, Ctrl+G | Close the picker |
 
 The message shows `Enter:` with both actions and highlights the one Enter will
-run. A second line shows `Tab: Cycle actions`; Tab never runs an action.
+run. A divider separates `Tab: Cycle actions` on the same line; Tab never runs
+an action. Notices follow after a blank line.
 
 The selected row keeps a typed stable host identity in Rofi's `info` field and
 its canonical host in `meta` for normal filtering; visible decoration never

@@ -57,7 +57,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn("\x00use-hot-keys\x1ftrue", output)
         self.assertIn("\x00no-custom\x1ftrue", output)
         self.assertIn("\x00prompt\x1fSSH\n", output)
-        self.assertIn('Enter: <span foreground="#42a5f5" weight="bold">[Connect]</span> · Forget recent history\u2028Tab: Cycle actions', output)
+        self.assertIn('Enter: <span foreground="#42a5f5" weight="bold">[Connect]</span> · Forget recent history  │  Tab: Cycle actions', output)
         self.assertNotIn("Shift+Tab:", output)
         self.assertIn(f'\x00data\x1f{self.action_data(ACTION_CONNECT)}', output)
         self.assertNotIn("Frequent", output)
@@ -78,7 +78,7 @@ class ProtocolTests(unittest.TestCase):
 
     def test_action_notice_is_escaped_for_rofi_message_markup(self) -> None:
         message = self.picker._message(ACTION_CONNECT, "host <alpha> & beta\u2028next")
-        self.assertIn("Tab: Cycle actions\u2028host &lt;alpha&gt; &amp; beta next", message)
+        self.assertIn("Tab: Cycle actions\u2028\u2028host &lt;alpha&gt; &amp; beta next", message)
         self.assertNotIn("host <alpha>", message)
 
     def test_selected_uses_typed_rofi_info_and_custom_input_cannot_connect(self) -> None:
@@ -132,7 +132,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertNotIn("\talpha\x00display", output)
         self.assertIn("beta\n", output)
         self.assertIn("\x00prompt\x1fSSH\t", output)
-        self.assertIn("[Connect]</span> · Forget recent history\u2028Tab: Cycle actions\u2028Forgot recent history for alpha", output)
+        self.assertIn("[Connect]</span> · Forget recent history  │  Tab: Cycle actions\u2028\u2028Forgot recent history for alpha", output)
         self.assertNotIn("\x00new-selection\x1f", output)
         self.assertEqual([h.host for h in self.store.load().hosts], ["beta"])
 

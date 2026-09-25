@@ -233,14 +233,14 @@ class Picker:
                 color = "#ffb74d" if candidate == ACTION_FORGET else "#42a5f5"
                 label = f'<span foreground="{color}" weight="bold">[{label}]</span>'
             labels.append(label)
-        hint = f"Enter: {' · '.join(labels)}\u2028Tab: Cycle actions"
+        hint = f"Enter: {' · '.join(labels)}  │  Tab: Cycle actions"
         if not notice:
             return hint
         safe_notice = "".join(
             " " if ord(char) < 32 or char in "\x7f\u0085\u2028\u2029" else char
             for char in notice
         ).strip()
-        return f"{hint}\u2028{escape(safe_notice, quote=False)}"
+        return f"{hint}\u2028\u2028{escape(safe_notice, quote=False)}"
 
     @dataclass(frozen=True)
     class _Row:
