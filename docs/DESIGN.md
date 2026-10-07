@@ -247,6 +247,21 @@ network timeout, or missing-binary failures. A hard subprocess timeout is an
 additional guard around SSH's own `ConnectTimeout` and scales with the
 configured `ConnectionAttempts` bound.
 
+### Retained lesson: reachability needs connection evidence
+
+The [DMS SSH Plus design](https://github.com/byebyebryan/dms-ssh-plus/blob/86ea10e17f79cfe8ad6c8a298a396b67afaba237/docs/DESIGN.md#success-detection-pre-flight-batchmode-probe)
+rejected recording a destination merely because its SSH process survived a
+grace period. A long-lived process can be waiting for authentication or stuck
+on a connection; terminal launch and process lifetime do not establish that
+an SSH server answered. That rationale still applies to the current detached
+worker and its terminal-first launch path.
+
+The explicit-user probe's recognized authentication and host-key errors
+establish a reached server, without proving a completed interactive login.
+Suite consumers need the separate authenticated reached-host marker before
+interpreting a remote domain result, as specified in
+[Host Mesh v1](HOST_MESH_V1.md#reached-host-protocol).
+
 ## Input and security
 
 Custom and callback destinations must be a single nonempty token, contain no
