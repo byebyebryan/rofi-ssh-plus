@@ -30,6 +30,17 @@ CLI behavior is unchanged.
 The runtime uses only Python's standard library. No third-party Python
 packages, daemon, or compiled Rofi plugin is required.
 
+An optional shared-authority backend is available for Mesh integration:
+`ROFI_SSH_PLUS_MESH_BACKEND=mesh-plus`. Install the selected Mesh Plus package
+in the Python environment used by this executable before selecting it. The
+default `legacy` backend remains standalone. An unavailable, incompatible or
+unknown explicitly selected backend returns a typed `invalid_config` result;
+there is no fallback. Selection applies to the picker and public mesh commands
+for the whole process. Both backends retain the existing configuration and
+route-health paths, revision algorithm and lock; successful-connection history
+stays with SSH Plus. This source capability does not select a managed artifact
+or change the backend of running services.
+
 ## Install and invoke
 
 Put an absolute symlink to `bin/rofi-ssh-plus` on `PATH`, or point Rofi at its

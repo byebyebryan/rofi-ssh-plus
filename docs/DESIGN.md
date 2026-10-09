@@ -14,6 +14,15 @@ original P8 Frequent/Recent lens, restores native Left/Right filter editing,
 and leaves the P9 wire contract unchanged. Chezmoi owns managed deployment and
 fleet/operator acceptance status.
 
+The Mesh extraction adds an explicit optional `mesh-plus` authority selection
+behind the existing `rofi_ssh_plus.mesh` facade. The standalone `legacy` default
+retains the original model/store bytes in `_legacy_mesh.py`. Native selection
+aliases Mesh's authority module, preserving model identity and test seams.
+Configuration, route-health locks/state and v1 wire behavior stay compatible;
+missing selected dependencies fail at the typed load boundary. Managed backend
+selection, paired artifact installation and operational acceptance remain with
+chezmoi. No history or config-directory migration is performed.
+
 ## P8 navigation and post-P9 SSH refinement
 
 P8 made SSH Plus structurally flat: hosts are leaf rows and there is no peer
