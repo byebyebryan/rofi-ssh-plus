@@ -5,6 +5,7 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$repo_root"
 
 python3 -m compileall -q rofi_ssh_plus bin tests
+python3 -m py_compile scripts/measure-mesh-startup
 python3 -m unittest discover -s tests -p 'test_*.py' -q
 
 mapfile -d '' -t candidate_files < <(git ls-files --cached --others --exclude-standard -z)
@@ -110,6 +111,7 @@ PY
 
 test -x bin/rofi-ssh-plus
 test -x scripts/check
+test -x scripts/measure-mesh-startup
 test -f README.md
 test -f docs/DESIGN.md
 test -f rofi_ssh_plus/__init__.py

@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "result": "passed",
+  "runs": 20,
+  "cpuSeconds": 1.068104,
+  "outputDigestExcludingGeneratedAt": "082d23ab5cc24c3632d62bddbb36c99f39a29a33ce1277b4e6d51e8fa607198a",
+  "pythonVersion": "3.14.7 (main, Aug 10 2026, 07:46:56) [GCC 16.1.1 20260728]",
+  "sourceCommit": "f3e62a5d195e9359a35f832010f3a016d8038b6b",
+  "sourceDirty": true,
+  "harnessSha256": "857aac7a607ed72b0cbb1f93fe9a6f7120de4a5899fc8c459aa021f740efa53f",
+  "fixtureSha256": "662b83871f4bb61903ca5de7afc9e69f54f17e442f0e2b8fcd950fe8b4e7732a",
+  "runtimeFiles": {
+    "rofi_ssh_plus/__init__.py": "9a538f94508e56bcdc2d95f54b020ecdb08f9a5077d5c6cd183c85c5c538551a",
+    "rofi_ssh_plus/model.py": "89bfc3b2b3e6cbb79c189863600b9bb468f393b7dc3fd53d690d10d7eabdd098",
+    "rofi_ssh_plus/ranking.py": "a19edf2aa72af25255c85022db78ed602570b2bc3f025a72d3a21cbe079db4f5",
+    "rofi_ssh_plus/state.py": "7e6dfff5bd2d3550ccc95e8a222376295ae9a4d7248a24f2aa60e188db87d453",
+    "rofi_ssh_plus/probe.py": "42cf9dddd2e9c71caa7651be538f3dd10523019fcc7870abe44ce6dfca0454d0",
+    "rofi_ssh_plus/launch.py": "9ee43729c24c77ffdfe617c05c3dbda691ad65de95c38022ad907e96acc6be14",
+    "rofi_ssh_plus/protocol.py": "88547320e52736960fd5808a0c502381ec2992070b46c8fa16e7ffb0a9457615",
+    "rofi_ssh_plus/cli.py": "14c1f512ec58aa71286981eb510913d46d97166e2eedb4c9d9e1a1a990e29f31",
+    "rofi_ssh_plus/mesh.py": "188570bdf706fcd758dae0b94be022645957313aaf7917d2b24fe65d856097b0"
+  },
+  "scope": "Fresh processes, isolated configured Mesh and private health state; no SSH or ordinary preferences"
+}

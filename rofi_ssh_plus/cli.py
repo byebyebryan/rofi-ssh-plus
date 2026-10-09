@@ -11,7 +11,6 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TextIO
 
-from .launch import run_managed_worker, run_worker, spawn_managed_worker, spawn_worker
 from .mesh import (
     MAX_ERROR_MESSAGE_CODEPOINTS,
     MeshError,
@@ -21,9 +20,6 @@ from .mesh import (
     report_route,
     route_health_path,
 )
-from .model import InvalidDestination
-from .protocol import Picker
-from .state import StateStore
 
 
 # These limits are part of the Host Mesh v1 process profile.  The final LF is
@@ -44,6 +40,13 @@ class _JsonEncodingError(ValueError):
 
 class _MeshArgumentError(ValueError):
     """Internal parser failure with no stderr side effects."""
+
+
+def spawn_worker(*args, **kwargs):
+    """Retain the picker injection seam without eager launcher imports."""
+    from .launch import spawn_worker as launch
+
+    return launch(*args, **kwargs)
 
 
 def _positive_env(env: Mapping[str, str], name: str, default: int) -> int:
@@ -86,12 +89,14 @@ def main(
     if args and args[0] == "--worker":
         if len(args) != 2:
             return 2
+        from .launch import run_worker
+        from .model import InvalidDestination, normalize_destination
+        from .state import StateStore
+
         try:
             host = args[1]
             # Normalize before entering the worker so malformed custom input
             # can never reach a subprocess.
-            from .model import normalize_destination
-
             host = normalize_destination(host)
         except (InvalidDestination, TypeError):
             return 2
@@ -110,9 +115,10 @@ def main(
     if args and args[0] == "--worker-managed":
         if len(args) != 2:
             return 2
-        try:
-            from .model import normalize_destination
+        from .launch import run_managed_worker
+        from .model import InvalidDestination, normalize_destination
 
+        try:
             host_id = normalize_destination(args[1])
         except (InvalidDestination, TypeError):
             return 2
@@ -127,6 +133,10 @@ def main(
 
     if args and args[0].startswith("--"):
         return 2
+    from .launch import spawn_managed_worker
+    from .protocol import Picker
+    from .state import StateStore
+
     try:
         retv = int(env.get("ROFI_RETV", "0"))
     except ValueError:

@@ -3,12 +3,72 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 
 class EntrypointSmokeTests(unittest.TestCase):
+    def test_mesh_works_without_picker_or_launcher_modules(self) -> None:
+        source_root = Path(__file__).parents[1]
+        with tempfile.TemporaryDirectory() as name:
+            root = Path(name)
+            config = root / "config/rofi-ssh-plus"
+            config.mkdir(parents=True)
+            shutil.copyfile(
+                source_root / "contracts/host-mesh-v1/fixtures/config-multi-route.toml",
+                config / "config.toml",
+            )
+            script = """
+import importlib.abc
+import json
+import sys
+class NoPicker(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path, target=None):
+        if fullname in {
+            'rofi_ssh_plus.launch', 'rofi_ssh_plus.model',
+            'rofi_ssh_plus.protocol', 'rofi_ssh_plus.state',
+        }:
+            raise AssertionError('Mesh depends on picker module: ' + fullname)
+sys.meta_path.insert(0, NoPicker())
+from rofi_ssh_plus.cli import main
+raise SystemExit(main(['mesh', 'list', '--json']))
+"""
+            result = subprocess.run(
+                [sys.executable, "-c", script],
+                cwd=source_root,
+                env={
+                    **os.environ,
+                    "XDG_CONFIG_HOME": str(root / "config"),
+                    "XDG_STATE_HOME": str(root / "state"),
+                },
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            import json
+
+            value = json.loads(result.stdout)
+            self.assertEqual(value["localHostId"], "alpha")
+            self.assertEqual(len(value["hosts"]), 3)
+            self.assertFalse((root / "state/rofi-ssh-plus/history.json").exists())
+
+    def test_package_exports_preserve_original_objects(self) -> None:
+        import rofi_ssh_plus
+        from rofi_ssh_plus import mesh, model, state
+
+        for name in rofi_ssh_plus.__all__:
+            module = (
+                state if name == "StateStore"
+                else model if name in {"HistoryState", "HostRecord"}
+                else mesh
+            )
+            self.assertIs(getattr(rofi_ssh_plus, name), getattr(module, name))
+            self.assertIn(name, dir(rofi_ssh_plus))
+        with self.assertRaises(AttributeError):
+            getattr(rofi_ssh_plus, "missing_export")
+
     def test_real_entrypoint_initializes_state_and_emits_headers(self) -> None:
         root = Path(tempfile.mkdtemp())
         try:

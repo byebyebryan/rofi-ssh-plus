@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+"""Measure fresh public Mesh CLI processes with private fixture config/state."""
+
+import argparse
+import hashlib
+import json
+import os
+import resource
+import subprocess
+import sys
+import tempfile
+import tomllib
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--runs", type=int, default=20)
+    parser.add_argument("--output", required=True, type=Path)
+    args = parser.parse_args()
+    assert args.runs >= 2
+    fixture = ROOT / "contracts/host-mesh-v1/fixtures/config-multi-route.toml"
+    config = tomllib.loads(fixture.read_text())
+    with tempfile.TemporaryDirectory(prefix="mesh-startup-") as name:
+        private = Path(name)
+        directory = private / "config/rofi-ssh-plus"
+        directory.mkdir(parents=True)
+        (directory / "config.toml").write_bytes(fixture.read_bytes())
+        env = {
+            **os.environ,
+            "XDG_CONFIG_HOME": str(private / "config"),
+            "XDG_STATE_HOME": str(private / "state"),
+        }
+        env.pop("ROFI_RETV", None)
+        digests = []
+        before = resource.getrusage(resource.RUSAGE_CHILDREN)
+        for _ in range(args.runs):
+            reply = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "bin/rofi-ssh-plus"),
+                    "mesh",
+                    "list",
+                    "--json",
+                ],
+                env=env,
+                capture_output=True,
+                check=True,
+            )
+            value = json.loads(reply.stdout)
+            assert value["localHostId"] == config["local_id"]
+            assert len(value["hosts"]) == 1 + len(config["hosts"])
+            value.pop("generatedAt")
+            digests.append(
+                hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
+            )
+        after = resource.getrusage(resource.RUSAGE_CHILDREN)
+        assert len(set(digests)) == 1
+    result = {
+        "schemaVersion": 1,
+        "result": "passed",
+        "runs": args.runs,
+        "cpuSeconds": after.ru_utime
+        + after.ru_stime
+        - before.ru_utime
+        - before.ru_stime,
+        "outputDigestExcludingGeneratedAt": digests[0],
+        "pythonVersion": sys.version,
+        "sourceCommit": subprocess.check_output(
+            ["git", "-C", str(ROOT), "rev-parse", "HEAD"],
+            text=True,
+        ).strip(),
+        "sourceDirty": bool(
+            subprocess.check_output(
+                ["git", "-C", str(ROOT), "status", "--porcelain"],
+                text=True,
+            ).strip()
+        ),
+        "harnessSha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "fixtureSha256": hashlib.sha256(fixture.read_bytes()).hexdigest(),
+        "runtimeFiles": {
+            str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in (ROOT / "rofi_ssh_plus").glob("*.py")
+        },
+        "scope": "Fresh processes, isolated configured Mesh and private health state; no SSH or ordinary preferences",
+    }
+    args.output.write_text(json.dumps(result, indent=2) + "\n")
+    print(
+        json.dumps(
+            {
+                key: result[key]
+                for key in ("runs", "cpuSeconds", "outputDigestExcludingGeneratedAt")
+            }
+        )
+    )
+
+
+if __name__ == "__main__":
+    main()
