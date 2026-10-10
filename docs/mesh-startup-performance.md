@@ -27,3 +27,17 @@ and the existing real executable/picker/worker cases. The Host Mesh v1 bundle
 digest remains `258e8df0562aea18a20db5378b3335b03332e3df0c0709faf49ccfbffa5c3e10`.
 This change adds no watch API or polling policy. Provider source acceptance is
 separate from downstream installed performance and managed deployment.
+
+## Managed authority adoption records
+
+[Default-authority adoption](evidence/2026-10-09-ssh-mesh-default.json) and
+[public-facade adoption](evidence/2026-10-09-ssh-mesh-facade.json) retain their
+original environment, hashes and outcome limits. Config, routes and authority
+are independent of recent-use history. Connect/Forget uses the accepted action
+cycle; Left/Right and Ctrl+B/F remain native filter editing. Forgotten ad-hoc
+rows disappear while managed hosts remain declared. Legacy `frequency` migrates
+to semantic recency only on a real state write; no history migration occurs here.
+[P8/P9 rollout history](https://github.com/byebyebryan/dotfiles/blob/5ff8b412a45b69cac64b8eb356444e6cf0705012/docs/rofi-plus-p9-cli-contracts.md) preserves the original
+suite cutover. Current contract authority is [Host Mesh v1](HOST_MESH_V1.md), not
+a dotfiles status ledger. Physical/UI acceptance and captured synthetic probes
+remain distinct.

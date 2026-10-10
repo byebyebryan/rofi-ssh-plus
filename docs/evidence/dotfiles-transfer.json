@@ -1,0 +1,20 @@
+{
+  "sourceRepository": "https://github.com/byebyebryan/dotfiles",
+  "sourceCommit": "5ff8b412a45b69cac64b8eb356444e6cf0705012",
+  "records": [
+    {
+      "oldPath": "docs/evidence/2026-10-09-ssh-mesh-default.json",
+      "owner": "rofi-ssh-plus",
+      "destinationPath": "docs/evidence/2026-10-09-ssh-mesh-default.json",
+      "sha256": "a7718a97f72dcc60d77d26e3bf5bd64b119a14ba81ff755c90e8a17ef78139b8",
+      "bytes": 3360
+    },
+    {
+      "oldPath": "docs/evidence/2026-10-09-ssh-mesh-facade.json",
+      "owner": "rofi-ssh-plus",
+      "destinationPath": "docs/evidence/2026-10-09-ssh-mesh-facade.json",
+      "sha256": "00d78f96df7326d330239864236a6acec36f26fdb001325c3fc652c871a83932",
+      "bytes": 1538
+    }
+  ]
+}

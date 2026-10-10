@@ -1,0 +1,770 @@
+#!/usr/bin/env python3
+"""Owner-scoped installed contract checks for rofi-ssh-plus."""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+COMMAND_NAMES = ("rofi-ssh-plus", "rofi-tmux-plus", "rofi-agent-plus")
+COMMAND_TIMEOUT_SECONDS = 10
+AGENT_REFRESH_TIMEOUT_SECONDS = 30
+AGENT_SNAPSHOT_VERSION = 4
+AGENT_CONTRACT_CAPABILITY = "host-mesh-v1+tmux-session-v1"
+AGENT_REFRESH_OUTCOMES = {"complete", "partial", "failed"}
+AGENT_OBSERVATION_STAGES = ("codex", "claude", "opencode", "activity", "tmux")
+AGENT_OBSERVATION_OUTCOMES = {"ok", "failed", "unknown"}
+AGENT_SOURCE_OBSERVATIONS = {"current", "retained", "activity-only"}
+HISTORY_MAX_BYTES = 1_000_000
+HOST_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*\Z")
+SESSION_ID_RE = re.compile(r"\$[0-9]+\Z")
+MAX_DIAGNOSTIC_LENGTH = 400
+MAX_REFERENCE_TEXT_LENGTH = 1024
+SESSION_NAME_PREFIX = "rofi-plus-accept-"
+SESSION_NAME_MAX_LENGTH = 128
+ROFI_CALLBACK_VARS = (
+    "ROFI_RETV",
+    "ROFI_INFO",
+    "ROFI_INPUT",
+    "ROFI_DATA",
+    "ROFI_OUTSIDE",
+)
+COMMAND_EXTENSION_DIRS = {
+    "rofi-ssh-plus": "ssh-plus",
+    "rofi-tmux-plus": "tmux-plus",
+    "rofi-agent-plus": "agent-plus",
+}
+
+
+CommandRunner = Callable[
+    [str, Sequence[str], Mapping[str, str]], subprocess.CompletedProcess[str]
+]
+
+
+OWNER_COMMAND = "rofi-ssh-plus"
+
+
+class CheckError(RuntimeError):
+    """A bounded, user-facing acceptance-gate failure."""
+
+
+@dataclass(frozen=True)
+class HistorySnapshot:
+    """Semantic SSH usage history, with missing state kept distinct."""
+
+    present: bool
+    semantic: str | None
+
+
+def _compact(value: object) -> str:
+    text = " ".join(str(value).split())
+    return text[:MAX_DIAGNOSTIC_LENGTH] or "no diagnostic"
+
+
+def _safe_host_id(value: object) -> str:
+    if (
+        not isinstance(value, str)
+        or len(value) > SESSION_NAME_MAX_LENGTH
+        or not HOST_ID_RE.fullmatch(value)
+    ):
+        raise CheckError("Host Mesh contains an invalid host ID")
+    return value
+
+
+def _safe_token(value: object, label: str, *, maximum: int) -> str:
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > maximum
+        or value.strip() != value
+        or any(not char.isprintable() or char.isspace() for char in value)
+    ):
+        raise CheckError(f"{label} is missing or contains unsafe text")
+    return value
+
+
+def _safe_revision(value: object) -> str:
+    try:
+        return _safe_token(
+            value, "Host Mesh meshRevision", maximum=MAX_REFERENCE_TEXT_LENGTH
+        )
+    except CheckError as error:
+        raise CheckError("Host Mesh has no safe nonempty meshRevision") from error
+
+
+def _history_path() -> Path:
+    state_home = os.environ.get("XDG_STATE_HOME") or "~/.local/state"
+    return Path(state_home).expanduser() / "rofi-ssh-plus" / "history.json"
+
+
+def _validate_history_payload(payload: object) -> None:
+    if not isinstance(payload, Mapping) or payload.get("version") != 1:
+        raise CheckError("SSH usage history is not version 1 JSON")
+    hosts = payload.get("hosts")
+    if not isinstance(hosts, list):
+        raise CheckError("SSH usage history has no hosts list")
+    seen: set[str] = set()
+    for raw_host in hosts:
+        if not isinstance(raw_host, Mapping):
+            raise CheckError("SSH usage history contains a malformed host")
+        host = raw_host.get("host")
+        if (
+            not isinstance(host, str)
+            or not host
+            or len(host) > MAX_REFERENCE_TEXT_LENGTH
+            or host.strip() != host
+            or host.startswith("-")
+            or any(not char.isprintable() or char.isspace() for char in host)
+        ):
+            raise CheckError("SSH usage history contains an unsafe host")
+        folded = host.casefold()
+        if folded in seen:
+            raise CheckError("SSH usage history contains duplicate hosts")
+        seen.add(folded)
+        count = raw_host.get("count")
+        if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
+            raise CheckError("SSH usage history contains an invalid count")
+        last_connected = raw_host.get("lastConnected")
+        if (
+            isinstance(last_connected, bool)
+            or not isinstance(last_connected, int)
+            or last_connected < 0
+        ):
+            raise CheckError("SSH usage history contains an invalid lastConnected")
+
+
+def _history_snapshot(path: Path | None = None) -> HistorySnapshot:
+    path = path or _history_path()
+    try:
+        if path.stat().st_size > HISTORY_MAX_BYTES:
+            raise CheckError("SSH usage history exceeds the bounded snapshot size")
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return HistorySnapshot(False, None)
+    except CheckError:
+        raise
+    except (OSError, UnicodeError) as error:
+        raise CheckError(
+            f"could not read SSH usage history: {_compact(error)}"
+        ) from error
+    if len(text.encode("utf-8")) > HISTORY_MAX_BYTES:
+        raise CheckError("SSH usage history exceeds the bounded snapshot size")
+    try:
+        payload = json.loads(text)
+    except (TypeError, ValueError, json.JSONDecodeError) as error:
+        raise CheckError(
+            f"SSH usage history is not valid JSON: {_compact(error)}"
+        ) from error
+    _validate_history_payload(payload)
+    # ``sortMode`` is a schema-v1 compatibility field, not durable user data.
+    # Normalize it for the semantic history guard so the first picker render
+    # may rewrite legacy/missing/invalid values to recency without appearing
+    # to mutate usage records.
+    semantic_payload = dict(payload)
+    semantic_payload["sortMode"] = "recency"
+    try:
+        semantic = json.dumps(
+            semantic_payload,
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    except (TypeError, ValueError) as error:
+        raise CheckError(
+            f"SSH usage history is not canonical JSON: {_compact(error)}"
+        ) from error
+    return HistorySnapshot(True, semantic)
+
+
+def _assert_history_unchanged(
+    before: HistorySnapshot, path: Path | None = None
+) -> None:
+    after = _history_snapshot(path)
+    if after != before:
+        before_state = "present" if before.present else "missing"
+        after_state = "present" if after.present else "missing"
+        raise CheckError(
+            f"SSH usage history changed during acceptance gate ({before_state} -> {after_state})"
+        )
+
+
+def _resolve(name: str) -> str:
+    found = shutil.which(name)
+    if found is None:
+        raise CheckError(f"{name} is not installed on PATH")
+    path = Path(found)
+    if not path.is_absolute():
+        raise CheckError(f"{name} did not resolve to an absolute executable path")
+    try:
+        target = path.resolve(strict=True)
+    except OSError as error:
+        raise CheckError(
+            f"{name} did not resolve to an installed target: {_compact(error)}"
+        ) from error
+    if name == "rofi-ssh-plus" and target == Path.home() / ".local/bin/rofi-ssh-plus":
+        expected = '#!/bin/sh\n# Chezmoi pins the shared authority independently of the picker.\nexport PYTHONPATH="$HOME/.local/share/mesh-plus/python${PYTHONPATH:+:$PYTHONPATH}"\nexec "$HOME/.local/share/rofi/extensions/ssh-plus/bin/rofi-ssh-plus" "$@"\n'
+        if (
+            not target.is_file()
+            or not os.access(target, os.X_OK)
+            or target.read_text() != expected
+        ):
+            raise CheckError("rofi-ssh-plus managed authority wrapper is invalid")
+        return str(target)
+    extension = COMMAND_EXTENSION_DIRS[name]
+    extension_root = (
+        Path.home() / ".local" / "share" / "rofi" / "extensions" / extension
+    )
+    try:
+        target.relative_to(extension_root.resolve(strict=True))
+    except (OSError, ValueError) as error:
+        raise CheckError(
+            f"{name} resolved outside its installed extension ({target})"
+        ) from error
+    if not target.is_file() or not os.access(target, os.X_OK):
+        raise CheckError(f"{name} did not resolve to an executable installed target")
+    return str(target)
+
+
+def _clean_environment() -> dict[str, str]:
+    environment = os.environ.copy()
+    for name in ROFI_CALLBACK_VARS:
+        environment.pop(name, None)
+    return environment
+
+
+def _run(
+    executable: str,
+    args: Sequence[str],
+    *,
+    environment: Mapping[str, str],
+    timeout: float = COMMAND_TIMEOUT_SECONDS,
+) -> subprocess.CompletedProcess[str]:
+    argv = [executable, *args]
+    try:
+        return subprocess.run(
+            argv,
+            env=dict(environment),
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise CheckError(
+            f"{Path(executable).name} timed out after {timeout:g}s"
+        ) from error
+    except OSError as error:
+        raise CheckError(
+            f"could not run {Path(executable).name}: {_compact(error)}"
+        ) from error
+
+
+def _invoke(
+    executable: str,
+    args: Sequence[str],
+    *,
+    environment: Mapping[str, str],
+    runner: CommandRunner | None = None,
+    timeout: float = COMMAND_TIMEOUT_SECONDS,
+) -> subprocess.CompletedProcess[str]:
+    if runner is None:
+        return _run(executable, args, environment=environment, timeout=timeout)
+    try:
+        result = runner(executable, tuple(args), environment)
+    except CheckError:
+        raise
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        raise CheckError(
+            f"could not run {Path(executable).name}: {_compact(error)}"
+        ) from error
+    if not isinstance(result, subprocess.CompletedProcess):
+        raise CheckError("command runner returned an invalid result")
+    return result
+
+
+def _require_success(
+    executable: str,
+    args: Sequence[str],
+    *,
+    environment: Mapping[str, str],
+    runner: CommandRunner | None = None,
+    timeout: float = COMMAND_TIMEOUT_SECONDS,
+) -> subprocess.CompletedProcess[str]:
+    result = _invoke(
+        executable,
+        args,
+        environment=environment,
+        runner=runner,
+        timeout=timeout,
+    )
+    if result.returncode != 0:
+        diagnostic = result.stderr or result.stdout
+        raise CheckError(
+            f"{Path(executable).name} exited {result.returncode}: {_compact(diagnostic)}"
+        )
+    return result
+
+
+def _json_document(result: subprocess.CompletedProcess[str], label: str) -> object:
+    try:
+        value = json.loads(result.stdout)
+    except (TypeError, ValueError, json.JSONDecodeError) as error:
+        raise CheckError(
+            f"{label} did not emit one JSON document: {_compact(error)}"
+        ) from error
+    return value
+
+
+def _mesh_hosts(payload: object) -> tuple[tuple[str, ...], str, str]:
+    if not isinstance(payload, Mapping) or payload.get("schemaVersion") != 1:
+        raise CheckError("Host Mesh response is not schemaVersion 1")
+    revision = _safe_revision(payload.get("meshRevision"))
+    local_id = _safe_host_id(payload.get("localHostId"))
+    raw_hosts = payload.get("hosts")
+    if not isinstance(raw_hosts, list) or not raw_hosts:
+        raise CheckError("Host Mesh response has no advertised hosts")
+
+    host_ids: set[str] = set()
+    local_hosts: list[str] = []
+    for raw_host in raw_hosts:
+        if not isinstance(raw_host, Mapping):
+            raise CheckError("Host Mesh response contains a malformed host")
+        host_id = _safe_host_id(raw_host.get("id"))
+        folded_id = host_id.casefold()
+        if folded_id in host_ids:
+            raise CheckError("Host Mesh response contains duplicate host IDs")
+        host_ids.add(folded_id)
+        if raw_host.get("local") is True:
+            local_hosts.append(host_id)
+    if len(local_hosts) != 1 or local_hosts[0].casefold() != local_id.casefold():
+        raise CheckError(
+            "Host Mesh response must have exactly one local host matching localHostId"
+        )
+    return (
+        tuple(
+            raw_host["id"] for raw_host in raw_hosts if isinstance(raw_host, Mapping)
+        ),
+        local_id,
+        revision,
+    )
+
+
+def _check_mesh(
+    ssh_executable: str, environment: Mapping[str, str]
+) -> tuple[tuple[str, ...], str, str]:
+    result = _require_success(
+        ssh_executable,
+        ("mesh", "list", "--json"),
+        environment=environment,
+    )
+    payload = _json_document(result, "Host Mesh list")
+    return _mesh_hosts(payload)
+
+
+def _validate_rofi_protocol(output: object, label: str) -> None:
+    if not isinstance(output, str) or not output:
+        raise CheckError(f"{label} emitted empty Rofi script output")
+    if not re.search(r"\x00[^\x00\r\n]{1,128}\x1f", output):
+        raise CheckError(f"{label} emitted no valid NUL protocol header")
+
+
+def _rofi_header(output: str, key: str) -> str | None:
+    marker = f"\x00{key}\x1f"
+    offset = output.find(marker)
+    if offset < 0:
+        return None
+    value = output[offset + len(marker) :]
+    boundaries = [
+        index
+        for separator in ("\n", "\t", "\x1e")
+        if (index := value.find(separator)) >= 0
+    ]
+    return value[: min(boundaries)] if boundaries else value
+
+
+def _render_callback(
+    executable: str,
+    retv: int,
+    environment: Mapping[str, str],
+    *,
+    data: str | None = None,
+    info: str | None = None,
+    runner: CommandRunner | None = None,
+) -> str:
+    callback_environment = dict(environment)
+    for name in ROFI_CALLBACK_VARS:
+        callback_environment.pop(name, None)
+    callback_environment["ROFI_RETV"] = str(retv)
+    if data is not None:
+        callback_environment["ROFI_DATA"] = data
+    if info is not None:
+        callback_environment["ROFI_INFO"] = info
+    result = _require_success(
+        executable,
+        (),
+        environment=callback_environment,
+        runner=runner,
+    )
+    combined = f"{result.stdout}\n{result.stderr}".casefold()
+    if "invalid_input" in combined:
+        raise CheckError(f"{Path(executable).name} callback reported invalid_input")
+    _validate_rofi_protocol(result.stdout, f"{Path(executable).name} ROFI_RETV={retv}")
+    return result.stdout
+
+
+def _expected_action_line(name: str, action: str) -> str:
+    order = {
+        "rofi-ssh-plus": ("Connect", "Forget recent history"),
+        "rofi-tmux-plus": ("Open", "Kill"),
+        "rofi-agent-plus": ("Resume", "Close", "New"),
+    }[name]
+    labels = []
+    for candidate in order:
+        label = candidate
+        if candidate == action:
+            color = (
+                "#ef5350"
+                if candidate == "Kill"
+                else "#ffb74d"
+                if candidate == "Forget recent history"
+                else "#42a5f5"
+            )
+            label = f'<span foreground="{color}" weight="bold">[{label}]</span>'
+        labels.append(label)
+    hint = (
+        "Tab: Cycle  │  Alt+A: All"
+        if name == "rofi-agent-plus"
+        else "Tab: Cycle actions"
+    )
+    return f"Enter: {' · '.join(labels)}  │  {hint}"
+
+
+def _check_ssh_recent_only(
+    executable: str,
+    environment: Mapping[str, str],
+    *,
+    runner: CommandRunner | None = None,
+) -> None:
+    """Prove SSH is a single listed-host view with safe action callbacks."""
+
+    initial = _render_callback(executable, 0, environment, runner=runner)
+    if _rofi_header(initial, "prompt") != "SSH":
+        raise CheckError("rofi-ssh-plus did not render the simple SSH prompt")
+    if not (_rofi_header(initial, "message") or "").startswith(
+        _expected_action_line("rofi-ssh-plus", "Connect")
+    ):
+        raise CheckError("rofi-ssh-plus did not render the Connect action line")
+    if _rofi_header(initial, "no-custom") != "true":
+        raise CheckError("rofi-ssh-plus allows typed-host submission")
+    row_start = "\x00delim\x1f\\t\n"
+    if row_start not in initial:
+        raise CheckError("rofi-ssh-plus omitted its tab-delimited rows")
+    rows = initial.split(row_start, 1)[1].removesuffix("\t").split("\t")
+    for row in rows:
+        if "\x00nonselectable\x1ftrue" in row:
+            continue
+        fields = tuple(
+            row.find(f"\x00{name}\x1f") for name in ("info", "meta", "display")
+        )
+        if not (0 <= fields[0] < fields[1] < fields[2]):
+            raise CheckError(
+                "rofi-ssh-plus row identity must precede multiline display"
+            )
+    if "Frequent" in initial or "Recent" in initial:
+        raise CheckError("rofi-ssh-plus rendered a retired frequency lens")
+    selected = _render_callback(
+        executable, 16, environment, data=_rofi_header(initial, "data"), runner=runner
+    )
+    if _rofi_header(selected, "prompt") != "SSH" or not (
+        _rofi_header(selected, "message") or ""
+    ).startswith(_expected_action_line("rofi-ssh-plus", "Forget recent history")):
+        raise CheckError("rofi-ssh-plus Tab did not select the Forget action line")
+    restored = _render_callback(
+        executable, 17, environment, data=_rofi_header(selected, "data"), runner=runner
+    )
+    if _rofi_header(restored, "prompt") != "SSH" or not (
+        _rofi_header(restored, "message") or ""
+    ).startswith(_expected_action_line("rofi-ssh-plus", "Connect")):
+        raise CheckError("rofi-ssh-plus Shift+Tab did not return to Connect")
+    for direction, output in (("Tab", selected), ("Shift+Tab", restored)):
+        if _rofi_header(output, "keep-filter") != "true":
+            raise CheckError(f"rofi-ssh-plus {direction} did not preserve the filter")
+        if _rofi_header(output, "keep-selection") != "true":
+            raise CheckError(f"rofi-ssh-plus {direction} did not preserve selection")
+    for retv in (10, 11, 12):
+        output = _render_callback(executable, retv, environment, runner=runner)
+        if _rofi_header(output, "prompt") != "SSH" or not (
+            _rofi_header(output, "message") or ""
+        ).startswith(_expected_action_line("rofi-ssh-plus", "Connect")):
+            raise CheckError(
+                f"rofi-ssh-plus retired callback {retv} changed the action line"
+            )
+        if "Frequent" in output or "Recent" in output:
+            raise CheckError(
+                f"rofi-ssh-plus legacy callback {retv} rendered a retired lens"
+            )
+        if _rofi_header(output, "keep-filter") != "true":
+            raise CheckError(
+                f"rofi-ssh-plus legacy callback {retv} did not preserve the filter"
+            )
+        if _rofi_header(output, "keep-selection") != "true":
+            raise CheckError(f"rofi-ssh-plus legacy callback {retv} lost selection")
+
+
+class _FakeCallbackRunner:
+    """Scripted callback output used only by ``--self-test``."""
+
+    def __init__(self, *, invalid_input: bool = False) -> None:
+        self.calls: list[tuple[str, tuple[str, ...], Mapping[str, str]]] = []
+        self.invalid_input = invalid_input
+
+    def __call__(
+        self,
+        executable: str,
+        args: Sequence[str],
+        environment: Mapping[str, str],
+    ) -> subprocess.CompletedProcess[str]:
+        self.calls.append((executable, tuple(args), dict(environment)))
+        name = Path(executable).name
+        retv = environment.get("ROFI_RETV")
+        labels = {
+            "rofi-tmux-plus": ("Tmux › All", "Tmux › Local", "Open", "Kill"),
+            "rofi-agent-plus": ("Agents › All", "Agents › Local", "Resume", "Close"),
+        }
+        initial, peer, primary, secondary = labels.get(
+            name, ("SSH", "SSH", "Connect", "Forget recent history")
+        )
+        action = primary
+        if name == "rofi-ssh-plus" and retv in {"16", "17"}:
+            prompt = initial
+            action = secondary if retv == "16" else primary
+            data = "action:forget" if retv == "16" else "action:connect"
+            preservation = "\x00keep-filter\x1ftrue\x1e\x00keep-selection\x1ftrue\x1e"
+        elif name == "rofi-ssh-plus" and retv in {"10", "11", "12"}:
+            prompt = initial
+            data = "action:connect"
+            preservation = "\x00keep-filter\x1ftrue\x1e\x00keep-selection\x1ftrue\x1e"
+        elif name != "rofi-ssh-plus" and retv in {"16", "17"}:
+            prompt = initial
+            if name == "rofi-agent-plus":
+                order = ("Resume", "Close", "New")
+                previous = environment.get("ROFI_DATA", "")
+                index = (
+                    int(previous.removeprefix("state:action:"))
+                    if previous.startswith("state:action:")
+                    else 0
+                )
+                index = (index + (1 if retv == "16" else -1)) % len(order)
+                action = order[index]
+                data = f"state:action:{index}"
+            else:
+                action = secondary if retv == "16" else primary
+                data = "state:secondary" if retv == "16" else "state:primary"
+            preservation = "\x00keep-filter\x1ftrue\x1e\x00keep-selection\x1ftrue\x1e"
+        elif retv == "11":
+            prompt = peer
+            data = "state:right"
+            preservation = "\x00keep-filter\x1ftrue\x1e"
+            if name in {"rofi-agent-plus", "rofi-tmux-plus"}:
+                preservation += (
+                    "\x00keep-selection\x1ftrue\x1e\x00new-selection\x1f0\x1e"
+                )
+        elif retv == "12":
+            prompt = initial
+            data = "state:left"
+            preservation = "\x00keep-filter\x1ftrue\x1e"
+            if name in {"rofi-agent-plus", "rofi-tmux-plus"}:
+                preservation += (
+                    "\x00keep-selection\x1ftrue\x1e\x00new-selection\x1f0\x1e"
+                )
+        else:
+            prompt = initial
+            data = "state:initial"
+            preservation = ""
+        no_custom = "\x00no-custom\x1ftrue\x1e" if name == "rofi-ssh-plus" else ""
+        message = f"\x00message\x1f{_expected_action_line(name, action)}\x1e"
+        if name == "rofi-ssh-plus" and retv == "0":
+            initial_output = (
+                f"\x00prompt\x1f{prompt}\n"
+                f"\x00message\x1f{_expected_action_line(name, action)}\n"
+                "\x00no-custom\x1ftrue\n"
+                f"\x00data\x1f{data}\n"
+                "\x00delim\x1f\\t\n"
+                'row\x00info\x1f{"version":1,"kind":"host","id":"row"}'
+                "\x00meta\x1frow\x00display\x1frow\nrecent\t"
+            )
+        else:
+            initial_output = (
+                f"\x00prompt\x1f{prompt}\x1e{message}{no_custom}"
+                f"\x00data\x1f{data}\x1e{preservation}row\x1e"
+            )
+        return subprocess.CompletedProcess(
+            [executable, *args],
+            0,
+            initial_output,
+            "invalid_input" if self.invalid_input else "",
+        )
+
+
+def _self_test_require(condition: bool, message: str) -> None:
+    if not condition:
+        raise CheckError("self-test assertion failed: " + message)
+
+
+def _self_test() -> int:
+    mesh = {
+        "schemaVersion": 1,
+        "meshRevision": "sha256:selftest",
+        "localHostId": "alpha",
+        "hosts": [
+            {"id": "alpha", "local": True},
+            {"id": "beta", "local": False},
+        ],
+    }
+    host_ids, local_id, revision = _mesh_hosts(mesh)
+    _self_test_require(
+        host_ids == ("alpha", "beta"), "mesh host order was not retained"
+    )
+    _self_test_require(
+        local_id == "alpha" and revision == "sha256:selftest", "mesh metadata changed"
+    )
+
+    with TemporaryDirectory(prefix="rofi-plus-history-selftest-") as directory:
+        history_path = Path(directory) / "history.json"
+        history_payload = {
+            "version": 1,
+            "sortMode": "recency",
+            "hosts": [{"host": "alpha", "lastConnected": 10, "count": 2}],
+        }
+        history_path.write_text(json.dumps(history_payload, indent=2), encoding="utf-8")
+        history_before = _history_snapshot(history_path)
+        history_path.write_text(
+            json.dumps(
+                {
+                    "hosts": history_payload["hosts"],
+                    "sortMode": "recency",
+                    "version": 1,
+                },
+                separators=(",", ":"),
+            ),
+            encoding="utf-8",
+        )
+        _assert_history_unchanged(history_before, history_path)
+        changed = dict(history_payload)
+        changed["hosts"] = [{"host": "alpha", "lastConnected": 10, "count": 3}]
+        history_path.write_text(json.dumps(changed), encoding="utf-8")
+        try:
+            _assert_history_unchanged(history_before, history_path)
+        except CheckError as error:
+            _self_test_require(
+                "history changed" in str(error), "history mutation was not detected"
+            )
+        else:
+            raise CheckError(
+                "self-test assertion failed: history mutation was accepted"
+            )
+        missing_path = Path(directory) / "missing.json"
+        missing = _history_snapshot(missing_path)
+        _self_test_require(
+            not missing.present, "missing history was not represented distinctly"
+        )
+        missing_path.write_text(json.dumps(history_payload), encoding="utf-8")
+        try:
+            _assert_history_unchanged(missing, missing_path)
+        except CheckError:
+            pass
+        else:
+            raise CheckError(
+                "self-test assertion failed: missing history matched present history"
+            )
+    print(
+        "[ok] SSH usage history comparison is semantic and distinguishes missing state"
+    )
+
+    callbacks = _FakeCallbackRunner()
+    environment = {
+        "ROFI_RETV": "7",
+        "ROFI_INFO": "stale",
+        "ROFI_INPUT": "stale",
+        "ROFI_DATA": "stale",
+        "ROFI_OUTSIDE": "stale",
+    }
+    _check_ssh_recent_only("/fake/rofi-ssh-plus", environment, runner=callbacks)
+    for _executable, args, environment in callbacks.calls:
+        _self_test_require(not args, "callback probe passed unexpected argv")
+        allowed = (
+            {"ROFI_RETV"}
+            if environment.get("ROFI_RETV") == "0"
+            else {"ROFI_RETV", "ROFI_DATA"}
+        )
+        _self_test_require(
+            set(environment).isdisjoint(set(ROFI_CALLBACK_VARS) - allowed),
+            "stale callback variables retained",
+        )
+    print("[ok] owner contract and guard self-test")
+    return 0
+
+
+def _live(lifecycle=False, legacy_callbacks=False):
+    before = _history_snapshot(_history_path())
+    try:
+        environment = _clean_environment()
+        ssh = _resolve("rofi-ssh-plus")
+        _host_ids, _local_id, _revision = _check_mesh(ssh, environment)
+        executable = _resolve(OWNER_COMMAND)
+        with TemporaryDirectory(prefix="owner-picker-state-") as state:
+            environment = dict(
+                environment, XDG_STATE_HOME=state, XDG_CACHE_HOME=state + "/cache"
+            )
+            _check_ssh_recent_only(executable, environment)
+    finally:
+        _assert_history_unchanged(before, _history_path())
+    print(
+        "[ok] installed owner contract checks; graphical/provider acceptance is separate"
+    )
+    return 0
+
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--self-test", action="store_true")
+    mode.add_argument("--live", action="store_true")
+    parser.add_argument(
+        "--lifecycle",
+        action="store_true",
+        help="Tmux only: explicitly exercise owned disposable native sessions",
+    )
+    parser.add_argument(
+        "--legacy-callbacks",
+        action="store_true",
+        help="Agent only: exercise the historical viewer/group contract",
+    )
+    args = parser.parse_args()
+    if args.lifecycle and (OWNER_COMMAND != "rofi-tmux-plus" or not args.live):
+        parser.error("--lifecycle requires Tmux --live")
+    if args.legacy_callbacks and (OWNER_COMMAND != "rofi-agent-plus" or not args.live):
+        parser.error("--legacy-callbacks requires Agent --live")
+    try:
+        return (
+            _self_test()
+            if args.self_test
+            else _live(args.lifecycle, args.legacy_callbacks)
+        )
+    except (CheckError, OSError, ValueError, subprocess.SubprocessError) as error:
+        print(f"[error] {_compact(error)}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

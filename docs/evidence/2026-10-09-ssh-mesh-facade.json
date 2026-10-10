@@ -1,0 +1,42 @@
+{
+  "checkedAtUtc": "2026-10-10T01:05:17.519997+00:00",
+  "sourceCommit": "f677491f4f3b78eb154dd0563220a871dd09bb90",
+  "archiveUrl": "https://github.com/byebyebryan/rofi-ssh-plus/archive/f677491f4f3b78eb154dd0563220a871dd09bb90.zip",
+  "archiveSha256": "ebc96864fe68552f19c513918f966aeda996e6b384df59e79637cba22622b481",
+  "selectionCommit": "b1bdc12",
+  "targets": {
+    "snap": {
+      "installedArchiveFiles": 70,
+      "executableModesMatch": true,
+      "recursiveChezmoiVerify": "passed",
+      "meshCatalogAndRecentPickerCallbacks": "passed",
+      "backend": "legacy",
+      "sshHistoryConfigRouteHealth": "unchanged",
+      "otherPickerArtifactsAndPilotLinks": "unchanged",
+      "privateLocalCommits": "preserved"
+    },
+    "starship": {
+      "installedArchiveFiles": 70,
+      "executableModesMatch": true,
+      "recursiveChezmoiVerify": "passed",
+      "meshCatalogAndRecentPickerCallbacks": "passed",
+      "backend": "legacy",
+      "sshHistoryConfigRouteHealth": "unchanged",
+      "otherPickerArtifactsAndPilotLinks": "unchanged",
+      "privateLocalCommits": "preserved"
+    }
+  },
+  "validation": {
+    "standaloneSourceTests": 80,
+    "standaloneOptionalMeshTestSkipped": 1,
+    "selectedMeshCompatibilityTests": 80,
+    "completeChezmoiGate": "passed",
+    "exactCandidateGate": "passed",
+    "sameRecursiveEndpointDiff": true
+  },
+  "limits": [
+    "Mesh runtime/backend not deployed or selected",
+    "No interactive GUI or connection-launch acceptance in this pass",
+    "Carbon excluded from target set"
+  ]
+}
