@@ -17,5 +17,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Run repository checks
+      - name: Install pinned Mesh authority
+        run: |
+          curl --fail --location --output /tmp/mesh_plus-0.1.0a1-py3-none-any.whl https://github.com/byebyebryan/mesh-plus/releases/download/v0.1.0a1/mesh_plus-0.1.0a1-py3-none-any.whl
+          echo 'e266493a068bdbf0c2c24d152decfc7203789e7e601c630a1c0cb350c33f2560  /tmp/mesh_plus-0.1.0a1-py3-none-any.whl' | sha256sum --check
+          python -m pip install --no-deps /tmp/mesh_plus-0.1.0a1-py3-none-any.whl
+      - name: Run repository checks with default authority
         run: ./scripts/check
+      - name: Check explicit legacy rollback
+        run: ROFI_SSH_PLUS_MESH_BACKEND=legacy ./scripts/check
