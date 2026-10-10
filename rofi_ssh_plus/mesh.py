@@ -1,7 +1,7 @@
 """Select one Host Mesh authority behind the existing Python facade.
 
-The standalone default preserves the legacy implementation. Explicit
-ROFI_SSH_PLUS_MESH_BACKEND=mesh-plus binds consumers to Mesh's model and store.
+The default binds consumers to Mesh Plus's shared model and store. Explicit
+ROFI_SSH_PLUS_MESH_BACKEND=legacy selects the bundled standalone implementation.
 Missing selected providers fail at load time without a fallback.
 """
 
@@ -10,7 +10,7 @@ import sys
 
 from . import _legacy_mesh
 
-backend = os.environ.get("ROFI_SSH_PLUS_MESH_BACKEND", "legacy")
+backend = os.environ.get("ROFI_SSH_PLUS_MESH_BACKEND", "mesh-plus")
 selected = _legacy_mesh
 failure = None
 if backend == "mesh-plus":

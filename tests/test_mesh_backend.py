@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class MeshBackendTests(unittest.TestCase):
-    def invoke(self, backend, *, block_mesh=False):
+    def invoke(self, backend, *, block_mesh=False, assert_mesh=False):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             config = root / "config/rofi-ssh-plus/config.toml"
@@ -24,12 +24,17 @@ class MeshBackendTests(unittest.TestCase):
             state.mkdir(parents=True)
             history = state / "history.json"
             history.write_bytes(b'private history sentinel\n')
-            env = {**os.environ, "ROFI_SSH_PLUS_MESH_BACKEND": backend,
+            env = {**os.environ,
                    "XDG_CONFIG_HOME": str(root / "config"),
                    "XDG_STATE_HOME": str(root / "state")}
+            env.pop("ROFI_SSH_PLUS_MESH_BACKEND", None)
+            if backend is not None:
+                env["ROFI_SSH_PLUS_MESH_BACKEND"] = backend
             program = "import sys; sys.path.insert(0, sys.argv[1]); "
             if block_mesh:
                 program += "sys.modules['mesh_plus'] = None; "
+            if assert_mesh:
+                program += "from rofi_ssh_plus import mesh; from mesh_plus import authority; assert mesh is authority; "
             program += "from rofi_ssh_plus.cli import main; sys.exit(main(['mesh','list','--json']))"
             result = subprocess.run([sys.executable, "-c", program, str(ROOT)],
                                     env=env, capture_output=True, timeout=3)
@@ -47,6 +52,20 @@ class MeshBackendTests(unittest.TestCase):
         code, value = self.invoke("mesh-plus", block_mesh=True)
         self.assertEqual(code, 1)
         self.assertEqual(value["error"]["code"], "invalid_config")
+
+    def test_default_missing_mesh_fails_without_legacy_fallback(self):
+        code, value = self.invoke(None, block_mesh=True)
+        self.assertEqual(code, 1)
+        self.assertEqual(value["error"]["code"], "invalid_config")
+
+    @unittest.skipUnless(importlib.util.find_spec("mesh_plus"), "Mesh package integration environment required")
+    def test_default_process_matches_explicit_shared_authority(self):
+        default_code, default = self.invoke(None, assert_mesh=True)
+        mesh_code, mesh = self.invoke("mesh-plus")
+        self.assertEqual((default_code, mesh_code), (0, 0))
+        default.pop("generatedAt")
+        mesh.pop("generatedAt")
+        self.assertEqual(default, mesh)
 
     def test_unknown_selection_is_typed(self):
         code, value = self.invoke("unrecognized")

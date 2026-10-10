@@ -27,13 +27,16 @@ CLI behavior is unchanged.
 - `ssh`
 - A terminal accepting `-e`; `$TERMINAL` is used when set, otherwise `ghostty`
 
-The runtime uses only Python's standard library. No third-party Python
-packages, daemon, or compiled Rofi plugin is required.
+The default runtime requires Mesh Plus's shared Host Mesh authority in the
+Python environment used by this executable. That authority uses only Python's
+standard library and imports no Observer collectors or delivery dependencies.
+No daemon or compiled Rofi plugin is required.
 
-An optional shared-authority backend is available for Mesh integration:
+Mesh Plus is the default shared-authority backend, also selected explicitly by
 `ROFI_SSH_PLUS_MESH_BACKEND=mesh-plus`. Install the selected Mesh Plus package
-in the Python environment used by this executable before selecting it. The
-default `legacy` backend remains standalone. An unavailable, incompatible or
+in the Python environment used by this executable before upgrading. Explicit
+`ROFI_SSH_PLUS_MESH_BACKEND=legacy` selects the bundled standalone rollback
+implementation. An unavailable, incompatible or
 unknown explicitly selected backend returns a typed `invalid_config` result;
 there is no fallback. Selection applies to the picker and public mesh commands
 for the whole process. Both backends retain the existing configuration and
