@@ -14,14 +14,21 @@ original P8 Frequent/Recent lens, restores native Left/Right filter editing,
 and leaves the P9 wire contract unchanged. Chezmoi owns managed deployment and
 fleet/operator acceptance status.
 
-The Mesh extraction adds an explicit optional `mesh-plus` authority selection
-behind the existing `rofi_ssh_plus.mesh` facade. The standalone `legacy` default
-retains the original model/store bytes in `_legacy_mesh.py`. Native selection
+The Mesh extraction makes `mesh-plus` the default authority selection behind
+the existing `rofi_ssh_plus.mesh` facade. Explicit
+`ROFI_SSH_PLUS_MESH_BACKEND=legacy` selects the standalone rollback implementation
+with the original model/store bytes in `_legacy_mesh.py`. Native selection
 aliases Mesh's authority module, preserving model identity and test seams.
 Configuration, route-health locks/state and v1 wire behavior stay compatible;
 missing selected dependencies fail at the typed load boundary. Managed backend
 selection, paired artifact installation and operational acceptance remain with
 chezmoi. No history or config-directory migration is performed.
+
+The shared authority implementation belongs to Mesh Plus. SSH Plus retains the
+canonical Host Mesh v1 bundle, compatibility CLI, connection history and picker
+policy. Native provider entry, observation and generic tmux management remain
+independent consumers. Agent Plus's former conversation/Tmux controller does
+not define the current suite dependency graph.
 
 ## P8 navigation and post-P9 SSH refinement
 

@@ -253,7 +253,9 @@ def _public_gate(ssh: Path, tmux: Path, agent: Path) -> None:
         for command, checkout in roots.items():
             (prefix / command).symlink_to(checkout / "bin" / command)
         interpreter = prefix / "python3"
-        interpreter.write_text("#!/bin/sh\nexec " + shlex.quote(sys.executable) + ' "$@"\n')
+        interpreter.write_text(
+            "#!/bin/sh\nexec " + shlex.quote(sys.executable) + ' "$@"\n'
+        )
         interpreter.chmod(0o700)
         for provider in ("codex", "claude", "opencode"):
             _write_stub(prefix / provider, 127)

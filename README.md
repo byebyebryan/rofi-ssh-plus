@@ -6,6 +6,12 @@ actually answered an SSH reachability check. It does not enumerate
 provides the Host Mesh Contract v1 process boundary for logical hosts, route
 candidates, and route health shared by the other suite pickers.
 
+Mesh Plus owns the shared host/route authority implementation. SSH Plus owns
+this public Host Mesh v1 contract/facade and the SSH picker's history and
+connection UX. Agent Plus uses host routing to open native provider managers;
+Observer readers use it for state delivery, and generic Tmux clients use it for
+their own workflows. These consumers have independent runtime requirements.
+
 The current source implements the Host Mesh contract, the published P8
 flat-scope navigation, and the SSH action cycle. The published post-P9
 recent-only SSH refinement supersedes the original P8 Frequent/Recent lens
