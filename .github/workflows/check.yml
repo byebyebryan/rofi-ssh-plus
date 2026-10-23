@@ -17,6 +17,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Install pinned check tooling
+        run: python -m pip install ruff==0.16.10
       - name: Install pinned Mesh authority
         run: |
           curl --fail --location --output /tmp/mesh_plus-0.1.0a1-py3-none-any.whl https://github.com/byebyebryan/mesh-plus/releases/download/v0.1.0a1/mesh_plus-0.1.0a1-py3-none-any.whl
