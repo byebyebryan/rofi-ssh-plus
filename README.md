@@ -1,5 +1,7 @@
 # rofi-ssh-plus
 
+[Project walkthrough](https://dev.byebyebryan.com/fleet-plus/projects/ssh-plus/) · [Fleet Plus overview](https://dev.byebyebryan.com/fleet-plus/) · [Documentation](docs/README.md)
+
 `rofi-ssh-plus` is a Rofi script-mode picker for SSH destinations that have
 actually answered an SSH reachability check. It does not enumerate
 `known_hosts` or SSH configuration, so the list stays small and useful. It also
