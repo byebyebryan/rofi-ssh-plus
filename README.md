@@ -1,246 +1,62 @@
-# rofi-ssh-plus
+# SSH Plus
 
-[Project walkthrough](https://dev.byebyebryan.com/fleet-plus/projects/ssh-plus/) · [Fleet Plus overview](https://dev.byebyebryan.com/fleet-plus/) · [Documentation](docs/README.md)
+A Rofi picker for configured SSH hosts and destinations that have answered a
+reachability check. It also exposes the public Host Mesh v1 process interface
+used by other tools for logical hosts, routes and route health.
 
-`rofi-ssh-plus` is a Rofi script-mode picker for SSH destinations that have
-actually answered an SSH reachability check. It does not enumerate
-`known_hosts` or SSH configuration, so the list stays small and useful. It also
-provides the Host Mesh Contract v1 process boundary for logical hosts, route
-candidates, and route health shared by the other suite pickers.
+[Project showcase](https://dev.byebyebryan.com/fleet-plus/projects/ssh-plus/) ·
+[Setup and usage](docs/usage.md) · [Documentation](docs/README.md)
 
-Mesh Plus owns the shared host/route authority implementation. SSH Plus owns
-this public Host Mesh v1 contract/facade and the SSH picker's history and
-connection UX. Agent Plus uses host routing to open native provider managers;
-Observer readers use it for state delivery, and generic Tmux clients use it for
-their own workflows. These consumers have independent runtime requirements.
+## Install and launch
 
-The current source implements the Host Mesh contract, the published P8
-flat-scope navigation, and the SSH action cycle. The published post-P9
-recent-only SSH refinement supersedes the original P8 Frequent/Recent lens
-without changing the Host Mesh wire contract. Managed deployment and fleet
-acceptance are tracked by the chezmoi repository. Its canonical P9 contract bundle is under
-`contracts/host-mesh-v1/`. Consumers invoke
-`rofi-ssh-plus mesh ... --json` through
-`PATH`; they do not import this package or read its private state.
-With an inherited Rofi `ROFI_RETV`, exactly one argv token `mesh` is treated as
-the selected picker row. Any following token makes the invocation an explicit
-Host Mesh CLI command, including invalid subcommands so they receive the
-standard `invalid_input` envelope. Without `ROFI_RETV`, existing `mesh ...`
-CLI behavior is unchanged.
+Requires Python 3.11+, Rofi 2.0+, OpenSSH and a terminal accepting `-e`
+(`TERMINAL`, otherwise Ghostty). The selected Mesh Plus authority package must
+be installed in the Python environment used by the checkout wrapper. See
+[configuration](docs/configuration.md) for backend selection and prerequisites.
 
-## Requirements
-
-- Python 3.11 or newer
-- Rofi 2.0 or newer with script modes
-- `ssh`
-- A terminal accepting `-e`; `$TERMINAL` is used when set, otherwise `ghostty`
-
-The default runtime requires Mesh Plus's shared Host Mesh authority in the
-Python environment used by this executable. That authority uses only Python's
-standard library and imports no Observer collectors or delivery dependencies.
-No daemon or compiled Rofi plugin is required.
-
-Mesh Plus is the default shared-authority backend, also selected explicitly by
-`ROFI_SSH_PLUS_MESH_BACKEND=mesh-plus`. Install the selected Mesh Plus package
-in the Python environment used by this executable before upgrading. Explicit
-`ROFI_SSH_PLUS_MESH_BACKEND=legacy` selects the bundled standalone rollback
-implementation. An unavailable, incompatible or
-unknown explicitly selected backend returns a typed `invalid_config` result;
-there is no fallback. Selection applies to the picker and public mesh commands
-for the whole process. Both backends retain the existing configuration and
-route-health paths, revision algorithm and lock; successful-connection history
-stays with SSH Plus. This source capability does not select a managed artifact
-or change the backend of running services.
-
-## Install and invoke
-
-Put an absolute symlink to `bin/rofi-ssh-plus` on `PATH`, or point Rofi at its
-absolute checkout path. The symlink keeps the adjacent Python package
-available to the thin wrapper. For example:
+From a checkout, put an absolute link on `PATH` and launch the Rofi script mode:
 
 ```sh
-ln -s /absolute/path/to/rofi-ssh-plus/bin/rofi-ssh-plus \
-  ~/.local/bin/rofi-ssh-plus
+mkdir -p ~/.local/bin
+ln -s /absolute/path/to/rofi-ssh-plus/bin/rofi-ssh-plus ~/.local/bin/rofi-ssh-plus
 ```
 
-A direct invocation is:
+The [setup guide](docs/usage.md#install-and-invoke) gives the complete Rofi
+invocation and key bindings. No daemon or compiled plugin is required.
+
+## Use
+
+- Enter connects the selected listed host; text filters the list.
+- Tab / Shift+Tab cycle Connect and Forget recent history without executing them.
+- Escape / Ctrl+G close the picker; Left/Right edit the filter.
+- Destinations sort by most recent successful connection; count is metadata only.
+
+Managed rows use configured ordered routes. Ad-hoc history does not discover
+new logical peers. The picker does not enumerate SSH config or `known_hosts`.
+See [usage](docs/usage.md) for row/history behavior and reachability limits.
+
+## Configure hosts or consume Host Mesh
+
+Mesh Plus owns the shared authority implementation; SSH Plus owns the canonical
+contract/facade, connection UX and successful-connection history. Configuration
+is endpoint-specific and directional: a peer readable from this host receives
+no automatic reverse route.
 
 ```sh
-rofi -show ssh-plus \
-  -modes "ssh-plus:/absolute/path/to/rofi-ssh-plus/bin/rofi-ssh-plus" \
-  -theme-str 'entry { placeholder: "Filter hosts · Enter connect · Tab actions · Esc close"; }' \
-  -kb-cancel Escape,Control+g \
-  -kb-element-next "" \
-  -kb-element-prev "" \
-  -kb-custom-7 Tab \
-  -kb-custom-8 ISO_Left_Tab \
-  -kb-custom-1 "" \
-  -kb-custom-2 "" \
-  -kb-custom-3 "" \
-  -kb-custom-4 "" \
-  -kb-accept-custom "" \
-  -kb-delete-entry "" \
-  -eh 2
+rofi-ssh-plus mesh list --json
 ```
 
-Create an absolute symlink to the checkout under the `ssh-plus` name in
-`~/.config/rofi/scripts/`; Rofi then discovers that filename as the mode name:
+Use [configuration](docs/configuration.md) for backend/state ownership and
+[Host Mesh v1](docs/HOST_MESH_V1.md) for exact config, CLI and report semantics.
+Agent Plus native entry and Observer/Tmux reads have independent requirements.
+
+## Develop
 
 ```sh
-ln -s /absolute/path/to/rofi-ssh-plus/bin/rofi-ssh-plus \
-  ~/.config/rofi/scripts/ssh-plus
-rofi -show ssh-plus \
-  -theme-str 'entry { placeholder: "Filter hosts · Enter connect · Tab actions · Esc close"; }' \
-  -kb-cancel Escape,Control+g \
-  -kb-element-next "" \
-  -kb-element-prev "" \
-  -kb-custom-7 Tab \
-  -kb-custom-8 ISO_Left_Tab \
-  -kb-custom-1 "" \
-  -kb-custom-2 "" \
-  -kb-custom-3 "" \
-  -kb-custom-4 "" \
-  -kb-accept-custom "" \
-  -kb-delete-entry "" \
-  -eh 2
+./scripts/check
 ```
 
-The picker opens with configured logical hosts and recorded ad-hoc destinations
-ordered strictly by most recent successful connection. Used destinations sort
-by descending `lastConnected`; equal timestamps use deterministic host mesh
-declaration/name tie-breakers and never use connection count. Never-used managed
-hosts follow in Host Mesh declaration order. Connection count remains secondary
-metadata after relative age. Plain Enter connects the highlighted listed host;
-typed text only filters the list. A managed row tries its ordered routes and
-records one logical-host usage after a route answers. The terminal opens even
-when checks fail, so a password prompt or visible SSH error remains possible.
-
-## Keys and actions
-
-| Key/action | Behavior |
-| --- | --- |
-| Up/Down, Ctrl-P/Ctrl-N | Navigate rows using Rofi defaults |
-| Left/Right | Move the filter cursor using Rofi defaults |
-| Tab | Cycle to the next action |
-| Shift+Tab | Select the previous action |
-| Enter | Run the displayed action on the selected listed host |
-| Escape, Ctrl+G | Close the picker |
-
-The message shows `Enter:` with both actions and highlights the one Enter will
-run. A divider separates `Tab: Cycle actions` on the same line; Tab never runs
-an action. Notices follow after a blank line.
-Host identity and search metadata precede the multiline display option in each
-Rofi row, so Enter receives the typed host identity on a one-row list.
-
-The selected row keeps a typed stable host identity in Rofi's `info` field and
-its canonical host in `meta` for normal filtering; visible decoration never
-drives selection. Each row reserves two physical lines: the destination is
-primary and the secondary line contains relative age followed by connection
-count. The active action name is carried in versioned `ROFI_DATA`; action
-callbacks preserve both the filter and highlighted row. `ROFI_RETV=2` and
-`ROFI_RETV=3` are visible no-ops, and callbacks 10, 11, and 12 from older
-windows are harmless notices. Escape and Ctrl+G are native cancellation keys.
-SSH has no peer view, so Left/Right and Ctrl+B/Ctrl+F retain Rofi's native
-filter-cursor behavior.
-
-A hostname is compared case-insensitively and stored in its canonical lower-case
-form. Connection counts are retained for metadata and migration but never
-participate in ordering. Legacy, missing, or invalid `sortMode` is read as
-recent-only and normalized on the next real write.
-
-## State and migration
-
-The generic state file is:
-
-```text
-${XDG_STATE_HOME:-~/.local/state}/rofi-ssh-plus/history.json
-```
-
-It is a versioned JSON object containing `version`, `sortMode`, and `hosts`.
-Each usage record has `host`, millisecond `lastConnected`, and positive `count`;
-configured managed hosts with no usage record are rendered with zero count and
-unknown age.
-The parent directory is private (`0700`), the state and lock files are private
-(`0600`), updates use an advisory lock and an atomic same-directory replace.
-
-Schema version 1 retains `sortMode` for rollback compatibility, but its value is
-not a user-visible setting. Missing, invalid, or legacy `frequency` values are
-accepted and normalized to `recency` on the next write without resetting hosts,
-timestamps, or counts. New writes always use `sortMode: "recency"`.
-
-The optional strict Host Mesh configuration is:
-
-```text
-${XDG_CONFIG_HOME:-~/.config}/rofi-ssh-plus/config.toml
-```
-
-When present, it defines the local identity, configured logical hosts, ordered
-routes, aliases, and SSH policy. A missing file safely synthesizes a local-only
-mesh from the system hostname. Route health is kept separately at
-`${XDG_STATE_HOME:-~/.local/state}/rofi-ssh-plus/route-health.json`; it never
-changes usage counts or recency.
-
-On the first read only, if the generic file does not exist, valid records are
-imported from:
-
-```text
-${XDG_STATE_HOME:-~/.local/state}/DankMaterialShell/plugins/sshPlus_state.json
-```
-
-The legacy file is never modified or deleted. Invalid rows are skipped or
-given safe defaults for missing count/timestamp fields; duplicate host
-identity is merged case-insensitively (counts are added and the newest
-timestamp wins). Even an absent or malformed legacy file creates an empty
-generic state file, making the import one-time.
-
-## Reachability and process ownership
-
-For each connection the worker executes this argv, without a shell:
-
-```text
-ssh -o BatchMode=yes -o ConnectTimeout=2 <host> true
-```
-
-Exit 0 records the destination. A nonzero exit is also considered a reached
-server when stderr contains `permission denied`, `host key verification`,
-`remote host identification has changed`, or `userauth`, matching the DMS SSH
-Plus behavior for password and host-key cases. DNS failures, refusal, route
-failures, and timeouts are not recorded. The terminal is launched regardless
-as an argv array (`$TERMINAL -e ssh <host>` or `ghostty -e ssh <host>`).
-
-Contract consumers use the reached-host marker wrapper from
-[Host Mesh Contract v1](docs/HOST_MESH_V1.md) for domain commands. A marker
-proves that SSH authenticated and started the remote wrapper; a later domain
-failure is not treated as a route failure.
-
-Optional environment configuration is intentionally narrow:
-
-- `TERMINAL` selects the terminal command prefix (parsed with `shlex.split`).
-- `ROFI_SSH_PLUS_CONNECT_TIMEOUT` sets the positive probe timeout in seconds;
-  the default is `2`.
-- `ROFI_SSH_PLUS_SSH_COMMAND` selects one SSH executable path for probing and
-  launch; it is passed as one argv element and does not accept extra options.
-
-The picker starts a detached worker, and the worker starts the terminal in a
-new session with standard input/output/error disconnected. For ad-hoc and
-single-route managed hosts the terminal is started before the worker performs
-the history probe, so Rofi can exit and the terminal can appear immediately.
-Multi-route managed hosts remain probe-first so SSH Plus can select a reachable
-fallback. History is still written only when the separate bounded probe
-establishes that an SSH server answered.
-
-## Limits and security choices
-
-- History is capped at 100 records, dropping the lowest-ranked records when
-  necessary.
-- Input must be one nonempty token with no whitespace or control characters
-  and must not begin with `-`; this blocks accidental SSH option injection.
-- SSH argument passthrough, host editing/pinning, and config/known-hosts
-  discovery remain intentionally out of scope. Declarative logical hosts and
-  routes are supplied only by the Host Mesh configuration file.
-- A successful reachability probe is not proof that authentication will
-  complete in the interactive terminal. It only proves that the destination
-  answered in a way consistent with a real SSH server.
-
-Run `./scripts/check` for deterministic validation. It does not connect to
-network hosts or require an active Rofi display session.
+The deterministic gate does not connect to network hosts or require a Rofi
+display. See [development](docs/development.md) for tools and conformance gates.
+Managed artifacts and fleet acceptance belong to the deployment owner.
+Shared presentation lives at [Fleet Plus](https://dev.byebyebryan.com/fleet-plus/).
