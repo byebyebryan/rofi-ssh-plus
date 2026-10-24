@@ -1,18 +1,27 @@
 # SSH Plus documentation
 
-| Guide | Purpose |
+Start with [getting started](getting-started.md). The [repository README](../README.md)
+is the short project entry point; [Fleet Plus](https://dev.byebyebryan.com/fleet-plus/)
+carries the shared showcase and project relationships.
+
+## Guides
+
+| Read | Purpose |
 | --- | --- |
-| [Setup and usage](usage.md) | Complete Rofi invocation, keys, history and reachability |
-| [Configuration](configuration.md) | Authority backend, host config, paths and launch settings |
-| [Host Mesh v1](HOST_MESH_V1.md) | Canonical configuration/CLI/report semantics |
-| [Design](DESIGN.md) | Current interaction, authority and process boundaries |
-| [Development](development.md) | Deterministic and public conformance checks |
+| [Usage](guides/usage.md) | Keys, rows, recent history and reachability |
+| [Configuration](guides/configuration.md) | Authority backend, hosts and state paths |
 
-The [repository README](../README.md) is the short source entry point.
-[Fleet Plus](https://dev.byebyebryan.com/fleet-plus/projects/ssh-plus/) carries
-the public showcase and ecosystem explanations.
+## Reference
 
-The [history index](history/README.md) retains earlier design and startup
-measurements. [`evidence/`](evidence/) preserves dated source/transfer evidence.
-Current configuration is endpoint-specific and directional; historical fleet
-inventories are not instructions to create reverse routes.
+| Read | Purpose |
+| --- | --- |
+| [Host Mesh v1](reference/host-mesh-v1.md) | Canonical process/configuration semantics |
+
+## Maintenance
+
+| Read | Purpose |
+| --- | --- |
+| [Development](maintenance/development.md) | Source and public conformance checks |
+
+These pages describe maintained behavior. Superseded plans, status notes and
+old receipts are kept in Git rather than in this documentation tree.

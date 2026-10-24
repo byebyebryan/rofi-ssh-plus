@@ -4,6 +4,8 @@ set -euo pipefail
 repo_root=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$repo_root"
 
+python3 -B scripts/check-docs
+
 # Source checks use private configuration, cache and preferences.
 check_state=$(mktemp -d)
 trap 'rm -rf -- "$check_state"' EXIT
@@ -121,7 +123,7 @@ test -x bin/rofi-ssh-plus
 test -x scripts/check
 test -x scripts/measure-mesh-startup
 test -f README.md
-test -f docs/DESIGN.md
+test -f docs/reference/host-mesh-v1.md
 test -f rofi_ssh_plus/__init__.py
 test -f tests/test_entrypoint.py
 
@@ -133,16 +135,6 @@ printf '%s\n' '[ok] Python syntax, unit tests, executable bits, expected files, 
 python3 scripts/check-installed --self-test
 python3 scripts/check-public-contract --self-test
 
-python3 - <<'PY_EVIDENCE'
-import hashlib
-import json
-from pathlib import Path
-manifest = json.loads(Path("docs/evidence/dotfiles-transfer.json").read_text())
-for record in manifest["records"]:
-    path = Path(record["destinationPath"])
-    assert hashlib.sha256(path.read_bytes()).hexdigest() == record["sha256"], path
-print(f"[ok] {len(manifest['records'])} immutable transferred evidence files")
-PY_EVIDENCE
 
 ruff check scripts/check-installed scripts/check-public-contract
 ruff format --check scripts/check-installed scripts/check-public-contract

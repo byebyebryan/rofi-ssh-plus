@@ -13,7 +13,7 @@ picker and public mesh commands, without changing running services.
 
 ## Host catalog
 
-The canonical [Host Mesh v1 guide](HOST_MESH_V1.md#configuration) defines the
+The canonical [Host Mesh v1 guide](../reference/host-mesh-v1.md#configuration) defines the
 TOML fields and examples. Use an explicit local logical identity and only peers
 that this endpoint may reach. Directional routes grant no reverse membership.
 SSH config, incoming connections, observed rows and history are not a registry.

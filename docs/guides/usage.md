@@ -1,62 +1,6 @@
-# Setup and usage
+# Usage
 
-Requires Python 3.11+, Rofi 2.0+, OpenSSH and the selected Mesh authority
-package in the wrapper interpreter. See [configuration](configuration.md).
-Use absolute paths to a checkout and create parent directories before linking;
-do not replace an existing command/configuration without reviewing it.
-
-## Install and invoke
-
-Put an absolute symlink to `bin/rofi-ssh-plus` on `PATH`, or point Rofi at its
-absolute checkout path. The symlink keeps the adjacent Python package
-available to the thin wrapper. For example:
-
-```sh
-ln -s /absolute/path/to/rofi-ssh-plus/bin/rofi-ssh-plus \
-  ~/.local/bin/rofi-ssh-plus
-```
-
-A direct invocation is:
-
-```sh
-rofi -show ssh-plus \
-  -modes "ssh-plus:/absolute/path/to/rofi-ssh-plus/bin/rofi-ssh-plus" \
-  -theme-str 'entry { placeholder: "Filter hosts · Enter connect · Tab actions · Esc close"; }' \
-  -kb-cancel Escape,Control+g \
-  -kb-element-next "" \
-  -kb-element-prev "" \
-  -kb-custom-7 Tab \
-  -kb-custom-8 ISO_Left_Tab \
-  -kb-custom-1 "" \
-  -kb-custom-2 "" \
-  -kb-custom-3 "" \
-  -kb-custom-4 "" \
-  -kb-accept-custom "" \
-  -kb-delete-entry "" \
-  -eh 2
-```
-
-Create an absolute symlink to the checkout under the `ssh-plus` name in
-`~/.config/rofi/scripts/`; Rofi then discovers that filename as the mode name:
-
-```sh
-ln -s /absolute/path/to/rofi-ssh-plus/bin/rofi-ssh-plus \
-  ~/.config/rofi/scripts/ssh-plus
-rofi -show ssh-plus \
-  -theme-str 'entry { placeholder: "Filter hosts · Enter connect · Tab actions · Esc close"; }' \
-  -kb-cancel Escape,Control+g \
-  -kb-element-next "" \
-  -kb-element-prev "" \
-  -kb-custom-7 Tab \
-  -kb-custom-8 ISO_Left_Tab \
-  -kb-custom-1 "" \
-  -kb-custom-2 "" \
-  -kb-custom-3 "" \
-  -kb-custom-4 "" \
-  -kb-accept-custom "" \
-  -kb-delete-entry "" \
-  -eh 2
-```
+For installation and the complete Rofi invocation, use [getting started](../getting-started.md).
 
 The picker opens with configured logical hosts and recorded ad-hoc destinations
 ordered strictly by most recent successful connection. Used destinations sort
@@ -117,7 +61,7 @@ failures, and timeouts are not recorded. The terminal is launched regardless
 as an argv array (`$TERMINAL -e ssh <host>` or `ghostty -e ssh <host>`).
 
 Contract consumers use the reached-host marker wrapper from
-[Host Mesh Contract v1](HOST_MESH_V1.md) for domain commands. A marker
+[Host Mesh Contract v1](../reference/host-mesh-v1.md) for domain commands. A marker
 proves that SSH authenticated and started the remote wrapper; a later domain
 failure is not treated as a route failure.
 

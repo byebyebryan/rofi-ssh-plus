@@ -352,15 +352,3 @@ The version-1 implementation publishes deterministic fixtures covering:
 
 Consumer repositories test against these published fixtures or executable
 fakes. They do not import SSH Plus internals or read its private state.
-
-## Adoption sequence
-
-1. The current source provides strict configuration parsing and the two JSON
-   commands above.
-2. Route-health events are persisted separately from explicit user usage.
-3. The SSH picker collapses managed routes and aliases to one logical host
-   while retaining ad-hoc successful destinations.
-4. Deterministic producer fixtures cover the list, report, marker, migration,
-   and error-envelope cases.
-5. Agent Plus and Tmux Plus consume this contract in their respective
-   integration checkpoints; they do not import SSH Plus internals.
